@@ -1,9 +1,11 @@
 use crate::apk::{parse_apk_file, parse_apk_file_with_locale, ApkInfo};
+use crate::OpenedFiles;
 use std::{
     env,
     path::{Path, PathBuf},
     process::Command,
 };
+use tauri::State;
 
 #[tauri::command]
 pub fn parse_apk(path: String, preferred_locale: Option<String>) -> Result<ApkInfo, String> {
@@ -41,6 +43,15 @@ pub fn install_apk(path: String, adb_path: Option<String>) -> Result<String, Str
     } else {
         detail
     })
+}
+
+#[tauri::command]
+pub fn take_opened_files(opened_files: State<OpenedFiles>) -> Result<Vec<String>, String> {
+    let mut pending = opened_files
+        .0
+        .lock()
+        .map_err(|_| "无法读取打开的文件列表".to_owned())?;
+    Ok(pending.drain(..).collect())
 }
 
 fn resolve_adb(configured_path: Option<&str>) -> Result<PathBuf, String> {

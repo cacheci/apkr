@@ -4,6 +4,40 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>APK 基础信息查看器</title>
+    <script>
+      try {
+        const settings = JSON.parse(localStorage.getItem("apk-info-settings") || "{}");
+        const theme = settings.theme === "dark" || settings.theme === "system" ? settings.theme : "light";
+        document.documentElement.dataset.theme = theme;
+      } catch {
+        document.documentElement.dataset.theme = "light";
+      }
+    </script>
+    <style>
+      :root {
+        background: #f0f0f0;
+        color: #3d475f;
+      }
+
+      :root[data-theme="dark"] {
+        background: #181a1f;
+        color: #d9dde8;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root[data-theme="system"] {
+          background: #181a1f;
+          color: #d9dde8;
+        }
+      }
+
+      html,
+      body {
+        margin: 0;
+        background: inherit;
+        color: inherit;
+      }
+    </style>
   </head>
   <body>
     <main id="app">

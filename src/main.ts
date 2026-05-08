@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { message, open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles.css";
 
 type ApkInfo = {
@@ -183,6 +184,21 @@ const empty = (value: string | undefined) => value && value.length > 0 ? value :
 
 showAppIcon(defaultApkIcon);
 applySettings();
+void boot();
+
+async function boot() {
+  try {
+    await loadPendingOpenedApk();
+  } finally {
+    const currentWindow = getCurrentWindow();
+    try {
+      await currentWindow.show();
+      await currentWindow.setFocus();
+    } catch (error) {
+      console.error("Failed to show main window", error);
+    }
+  }
+}
 
 async function loadApk(path: string) {
   installToggle.disabled = true;
@@ -470,3 +486,23 @@ listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
     await loadApk(path);
   }
 });
+
+listen<string[]>("apk-opened", async (event) => {
+  await loadFirstApkPath(event.payload);
+});
+
+async function loadPendingOpenedApk() {
+  try {
+    const paths = await invoke<string[]>("take_opened_files");
+    await loadFirstApkPath(paths);
+  } catch (error) {
+    console.error("Failed to load opened APK", error);
+  }
+}
+
+async function loadFirstApkPath(paths: string[]) {
+  const path = paths.find((candidate) => /\.apk$/i.test(candidate));
+  if (path) {
+    await loadApk(path);
+  }
+}

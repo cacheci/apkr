@@ -17,7 +17,9 @@
         "height": 760,
         "minWidth": 760,
         "minHeight": 560,
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "visible": false,
+        "backgroundColor": "#181a1f"
       }
     ],
     "security": {
@@ -27,6 +29,17 @@
   "bundle": {
     "active": true,
     "targets": ["app"],
-    "icon": ["icons/icon.png"]
+    "icon": ["icons/icon.png"],
+    "fileAssociations": [
+      {
+        "ext": ["apk"],
+        "name": "Android APK",
+        "description": "Android application package",
+        "mimeType": "application/vnd.android.package-archive",
+        "role": "Viewer",
+        "rank": "Default",
+        "androidIntentActionFilters": ["view"]
+      }
+    ]
   }
 }
