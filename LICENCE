@@ -7,3 +7,24 @@ MiSans is licensed under the MiSans Font Intellectual Property License Agreement
 Official source: https://hyperos.mi.com/font/
 
 ====
+
+Third-party dependency notices:
+
+This project depends on third-party open source libraries through npm and Cargo.
+No GPL or AGPL dependency was found in the current locked dependency tree.
+
+The following indirect Cargo dependencies are licensed under the Mozilla Public
+License 2.0 (MPL-2.0), which requires notices to identify the use of covered
+code and to keep modifications to MPL-covered files available under MPL-2.0:
+
+- cssparser 0.36.0
+- cssparser-macros 0.6.1
+- dtoa-short 0.3.5
+- option-ext 0.2.0
+- selectors 0.36.1
+
+These libraries are used as unmodified third-party dependencies. Their source
+code and license terms are available from crates.io and the respective upstream
+repositories referenced by their Cargo package metadata.
+
+====
