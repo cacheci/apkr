@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>APK 基础信息查看器</title>
+  </head>
+  <body>
+    <main id="app">
+      <section class="hero">
+        <div>
+          <h1 data-i18n="title">APK 基础信息查看器</h1>
+          <p class="subtitle" data-i18n="subtitle">选择一个 APK (S)，快速查看包名、版本、SDK、权限、组件、ABI 与签名文件。</p>
+        </div>
+        <div class="hero-actions">
+          <button class="icon-button" id="install-toggle" type="button" data-i18n="install" disabled>安装</button>
+          <button class="icon-button" id="settings-toggle" type="button" data-i18n="settings">设置</button>
+        </div>
+      </section>
+
+      <section id="main-view">
+        <section class="drop-zone" id="drop-zone" role="button" tabindex="0">
+          <div>
+            <strong id="current-path" data-i18n="dropHint">拖拽 APK 到这里或点击选择文件</strong>
+            <div class="tech-features" id="tech-features"></div>
+          </div>
+          <img id="app-icon" alt="" />
+        </section>
+
+        <section class="grid">
+          <article class="card summary-card">
+            <h2 data-i18n="summary">基础信息</h2>
+            <dl id="summary"></dl>
+          </article>
+
+          <article class="card">
+            <h2 data-i18n="permissions">权限</h2>
+            <pre id="permissions" data-i18n="emptyData">暂无数据</pre>
+          </article>
+
+          <article class="card">
+            <h2 data-i18n="components">组件</h2>
+            <pre id="components" data-i18n="emptyData">暂无数据</pre>
+          </article>
+
+          <article class="card">
+            <h2 data-i18n="files">文件</h2>
+            <pre id="files" data-i18n="emptyData">暂无数据</pre>
+          </article>
+        </section>
+      </section>
+
+      <section class="settings-view" id="settings-view" hidden>
+        <section class="settings-panel">
+          <label>
+            <span data-i18n="language">语言</span>
+            <select id="language-select">
+              <option value="zh-CN">简体中文</option>
+              <option value="en-US">English</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="theme">主题</span>
+            <select id="theme-select">
+              <option value="light" data-i18n="themeLight">浅色</option>
+              <option value="dark" data-i18n="themeDark">深色</option>
+              <option value="system" data-i18n="themeSystem">跟随系统</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="adbPath">ADB 位置</span>
+            <input id="adb-path-input" type="text" data-i18n-placeholder="adbPathPlaceholder" placeholder="留空则自动查找" />
+          </label>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
