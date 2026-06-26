@@ -731,6 +731,9 @@ fn render_svg_path(node: &XmlNode, resource_table: Option<&ResourceTable>, prefe
 fn svg_transform(node: &XmlNode) -> String {
     let translate_x = parse_float_attr(node, "android:translateX").unwrap_or(0.0);
     let translate_y = parse_float_attr(node, "android:translateY").unwrap_or(0.0);
+    let pivot_x = parse_float_attr(node, "android:pivotX").unwrap_or(0.0);
+    let pivot_y = parse_float_attr(node, "android:pivotY").unwrap_or(0.0);
+    let rotation = parse_float_attr(node, "android:rotation").unwrap_or(0.0);
     let scale_x = parse_float_attr(node, "android:scaleX").unwrap_or(1.0);
     let scale_y = parse_float_attr(node, "android:scaleY").unwrap_or(1.0);
     let mut transforms = Vec::new();
@@ -739,8 +742,20 @@ fn svg_transform(node: &XmlNode) -> String {
         transforms.push(format!("translate({translate_x} {translate_y})"));
     }
 
+    if pivot_x != 0.0 || pivot_y != 0.0 {
+        transforms.push(format!("translate({pivot_x} {pivot_y})"));
+    }
+
+    if rotation != 0.0 {
+        transforms.push(format!("rotate({rotation})"));
+    }
+
     if scale_x != 1.0 || scale_y != 1.0 {
         transforms.push(format!("scale({scale_x} {scale_y})"));
+    }
+
+    if pivot_x != 0.0 || pivot_y != 0.0 {
+        transforms.push(format!("translate({} {})", -pivot_x, -pivot_y));
     }
 
     transforms.join(" ")

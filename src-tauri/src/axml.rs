@@ -259,10 +259,10 @@ fn format_typed_value(strings: &[String], value_type: u8, data_value: u32, raw: 
 
 fn complex_to_float(value: u32) -> f32 {
     const RADIX_MULTS: [f32; 4] = [
-        1.0 / (1 << 8) as f32,
+        1.0,
+        1.0 / (1 << 7) as f32,
         1.0 / (1 << 15) as f32,
         1.0 / (1 << 23) as f32,
-        1.0 / (1 << 31) as f32,
     ];
     let mantissa = ((value >> 8) & 0x00ff_ffff) as i32;
     let signed = (mantissa << 8) >> 8;
@@ -299,10 +299,13 @@ fn attr_name_from_res_id(id: u32) -> String {
         0x0101_040c => "strokeColor",
         0x0101_040d => "strokeWidth",
         0x0101_0411 => "fillType",
+        0x0101_031a => "pivotX",
+        0x0101_031b => "pivotY",
         0x0101_0320 => "translateX",
         0x0101_0321 => "translateY",
         0x0101_031c => "scaleX",
         0x0101_031d => "scaleY",
+        0x0101_031e => "rotation",
         0x0101_0176 => "insetLeft",
         0x0101_0177 => "insetRight",
         0x0101_0178 => "insetTop",
