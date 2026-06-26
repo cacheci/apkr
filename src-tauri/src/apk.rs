@@ -393,7 +393,7 @@ fn adaptive_icon_to_svg_data_url(
     }
 
     let svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">{body}</svg>"#
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">{body}</svg>"#
     );
     Some(format!("data:image/svg+xml;base64,{}", base64_encode(svg.as_bytes())))
 }
@@ -1181,6 +1181,22 @@ mod real_apk_tests {
         let svg_bytes = base64_decode_for_test(svg_base64);
         let svg = String::from_utf8_lossy(&svg_bytes);
         assert!(svg.contains("scale(0.13034482 0.13034482)"));
+    }
+
+    #[test]
+    fn crops_adaptive_icon_to_launcher_safe_zone() {
+        let apk_path = Path::new("/Users/cacheci/Downloads/Yukigram/HyperMarket-v1.0.0(2)-release.apk");
+        if !apk_path.exists() {
+            return;
+        }
+
+        let info = parse_apk_file(apk_path.to_str().unwrap()).expect("hypermarket apk should parse");
+        let svg_base64 = info.app_icon_data_url.trim_start_matches("data:image/svg+xml;base64,");
+        let svg_bytes = base64_decode_for_test(svg_base64);
+        let svg = String::from_utf8_lossy(&svg_bytes);
+        assert!(svg.contains(r#"viewBox="18 18 72 72""#));
+        assert!(svg.contains("translate(54 54)"));
+        assert!(svg.contains("scale(0.7"));
     }
 
     #[test]

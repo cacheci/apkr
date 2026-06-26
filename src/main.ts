@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { message, open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import defaultApkIcon from "../src-tauri/icons/icon_droid.svg";
 import "./styles.css";
 
 type ApkInfo = {
@@ -173,8 +174,6 @@ const installToggle = document.querySelector<HTMLButtonElement>("#install-toggle
 const languageSelect = document.querySelector<HTMLSelectElement>("#language-select")!;
 const themeSelect = document.querySelector<HTMLSelectElement>("#theme-select")!;
 const adbPathInput = document.querySelector<HTMLInputElement>("#adb-path-input")!;
-const defaultApkIcon =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='13' y='7' width='38' height='50' rx='8' fill='%23418db1'/%3E%3Cpath d='M23 7h16l12 12v30a8 8 0 0 1-8 8H21a8 8 0 0 1-8-8V15a8 8 0 0 1 8-8h2z' fill='%2351a6cd'/%3E%3Cpath d='M39 7v12h12' fill='%23aed4e4'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-family='Arial, sans-serif' font-size='13' font-weight='700' fill='%23ffecec'%3EAPK%3C/text%3E%3C/svg%3E";
 let settings = loadSettings();
 let currentInfo: ApkInfo | null = null;
 let isSettingsView = false;
