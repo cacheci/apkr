@@ -1,4 +1,8 @@
-use crate::{arsc::ResourceTable, axml::{parse_binary_manifest, XmlNode}, utils::human_size};
+use crate::{
+    arsc::ResourceTable,
+    axml::{parse_binary_manifest, XmlNode},
+    utils::human_size,
+};
 use flate2::read::DeflateDecoder;
 use regex::Regex;
 use serde::Serialize;
@@ -111,7 +115,15 @@ pub fn parse_apk_file_with_locale(
         .unwrap_or_default();
     let app_icon_data_url = entries
         .as_ref()
-        .and_then(|entries| icon_data_url(&bytes, entries, resource_table.as_ref(), &resolved_app_icon, &preferred_locale))
+        .and_then(|entries| {
+            icon_data_url(
+                &bytes,
+                entries,
+                resource_table.as_ref(),
+                &resolved_app_icon,
+                &preferred_locale,
+            )
+        })
         .unwrap_or_default();
     let supported_languages = resource_table
         .as_ref()
@@ -133,15 +145,9 @@ pub fn parse_apk_file_with_locale(
         package_name: manifest.attr("package"),
         version_name: manifest.android_attr("versionName"),
         version_code: manifest.android_attr("versionCode"),
-        min_sdk: uses_sdk
-            .as_ref()
-            .map(|node| node.android_attr("minSdkVersion"))
-            .unwrap_or_default(),
-        target_sdk: uses_sdk
-            .as_ref()
-            .map(|node| node.android_attr("targetSdkVersion"))
-            .unwrap_or_default(),
-        compile_sdk: manifest.android_attr("compileSdkVersion"),
+        min_sdk: sdk_attr(&manifest, uses_sdk, "minSdkVersion"),
+        target_sdk: sdk_attr(&manifest, uses_sdk, "targetSdkVersion"),
+        compile_sdk: compile_sdk_attr(&manifest),
         app_label,
         resolved_app_label,
         app_icon,
@@ -165,8 +171,47 @@ pub fn parse_apk_file_with_locale(
     })
 }
 
-fn read_manifest_data(bytes: &[u8], entries: &[ZipEntry]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    if let Some(entry) = entries.iter().find(|entry| entry.name == "AndroidManifest.xml") {
+fn sdk_attr(manifest: &XmlNode, preferred_node: Option<&XmlNode>, name: &str) -> String {
+    preferred_node
+        .and_then(|node| non_empty(node.android_attr(name)))
+        .or_else(|| non_empty(manifest.android_attr(name)))
+        .or_else(|| find_android_attr(manifest, name))
+        .unwrap_or_default()
+}
+
+fn compile_sdk_attr(manifest: &XmlNode) -> String {
+    let compile_sdk = sdk_attr(manifest, None, "compileSdkVersion");
+    if compile_sdk.is_empty() {
+        non_empty(manifest.attr("platformBuildVersionCode")).unwrap_or_default()
+    } else {
+        compile_sdk
+    }
+}
+
+fn find_android_attr(node: &XmlNode, name: &str) -> Option<String> {
+    non_empty(node.android_attr(name)).or_else(|| {
+        node.children
+            .iter()
+            .find_map(|child| find_android_attr(child, name))
+    })
+}
+
+fn non_empty(value: String) -> Option<String> {
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn read_manifest_data(
+    bytes: &[u8],
+    entries: &[ZipEntry],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    if let Some(entry) = entries
+        .iter()
+        .find(|entry| entry.name == "AndroidManifest.xml")
+    {
         let data = read_zip_entry_data(bytes, entry)?;
         if parse_binary_manifest(&data)
             .map(|node| node.name == "manifest")
@@ -214,10 +259,20 @@ fn read_zip_entries(bytes: &[u8]) -> Result<Vec<ZipEntry>, Box<dyn std::error::E
         let name_end = name_start + name_len;
         let name = String::from_utf8_lossy(get_range(bytes, name_start, name_end)?).to_string();
         let extra = get_range(bytes, name_end, name_end + extra_len)?;
-        let (compressed_size, uncompressed_size, local_header_offset) =
-            apply_zip64_extra(compressed_size, uncompressed_size, local_header_offset, extra)?;
+        let (compressed_size, uncompressed_size, local_header_offset) = apply_zip64_extra(
+            compressed_size,
+            uncompressed_size,
+            local_header_offset,
+            extra,
+        )?;
 
-        entries.push(ZipEntry { name, compression_method, compressed_size, uncompressed_size, local_header_offset });
+        entries.push(ZipEntry {
+            name,
+            compression_method,
+            compressed_size,
+            uncompressed_size,
+            local_header_offset,
+        });
         offset = name_end + extra_len + comment_len;
     }
 
@@ -292,7 +347,10 @@ fn apply_zip64_extra(
     Ok((compressed_size, uncompressed_size, local_header_offset))
 }
 
-fn read_zip_entry_data(bytes: &[u8], entry: &ZipEntry) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn read_zip_entry_data(
+    bytes: &[u8],
+    entry: &ZipEntry,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let offset = entry.local_header_offset;
     if read_u32(bytes, offset)? != LOCAL_FILE_SIGNATURE {
         return Err(format!("ZIP 本地文件头异常：{}", entry.name).into());
@@ -301,7 +359,9 @@ fn read_zip_entry_data(bytes: &[u8], entry: &ZipEntry) -> Result<Vec<u8>, Box<dy
     let name_len = read_u16(bytes, offset + 26)? as usize;
     let extra_len = read_u16(bytes, offset + 28)? as usize;
     let data_start = offset + 30 + name_len + extra_len;
-    let stored_size = if entry.compression_method == METHOD_STORED && entry.uncompressed_size > entry.compressed_size {
+    let stored_size = if entry.compression_method == METHOD_STORED
+        && entry.uncompressed_size > entry.compressed_size
+    {
         entry.uncompressed_size
     } else {
         entry.compressed_size
@@ -343,11 +403,15 @@ fn icon_data_url(
     }
 
     let xml = parse_binary_manifest(&data).ok()?;
-    if let Some(svg) = adaptive_icon_to_svg_data_url(bytes, entries, resource_table, &xml, preferred_locale) {
+    if let Some(svg) =
+        adaptive_icon_to_svg_data_url(bytes, entries, resource_table, &xml, preferred_locale)
+    {
         return Some(svg);
     }
 
-    if let Some(svg) = vector_to_svg_data_url(&xml, resource_table, preferred_locale) {
+    if let Some(svg) =
+        vector_to_svg_data_url(bytes, entries, &xml, resource_table, preferred_locale)
+    {
         return Some(svg);
     }
 
@@ -378,24 +442,33 @@ fn adaptive_icon_to_svg_data_url(
 
     let mut body = String::new();
     if let Some(color) = background_color {
-        body.push_str(&format!(r#"<rect width="108" height="108" fill="{color}"/>"#));
+        body.push_str(&format!(
+            r#"<rect width="108" height="108" fill="{color}"/>"#
+        ));
     } else {
         body.push_str(r##"<rect width="108" height="108" fill="#f0f0f0"/>"##);
     }
 
     if let Some(layer) = background {
-        body.push_str(&render_adaptive_layer(bytes, entries, table, &layer, preferred_locale, false).unwrap_or_default());
+        body.push_str(
+            &render_adaptive_layer(bytes, entries, table, &layer, preferred_locale, false)
+                .unwrap_or_default(),
+        );
     }
 
     if let Some(layer) = foreground {
-        let foreground_svg = render_adaptive_layer(bytes, entries, table, &layer, preferred_locale, true).unwrap_or_default();
+        let foreground_svg =
+            render_adaptive_layer(bytes, entries, table, &layer, preferred_locale, true)
+                .unwrap_or_default();
         body.push_str(&foreground_svg);
     }
 
-    let svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">{body}</svg>"#
-    );
-    Some(format!("data:image/svg+xml;base64,{}", base64_encode(svg.as_bytes())))
+    let svg =
+        format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">{body}</svg>"#);
+    Some(format!(
+        "data:image/svg+xml;base64,{}",
+        base64_encode(svg.as_bytes())
+    ))
 }
 
 fn adaptive_icon_layer(
@@ -404,7 +477,10 @@ fn adaptive_icon_layer(
     table: &ResourceTable,
     preferred_locale: &str,
 ) -> Option<String> {
-    let child = node.children.iter().find(|child| child.name == layer_name)?;
+    let child = node
+        .children
+        .iter()
+        .find(|child| child.name == layer_name)?;
     let drawable = child.android_attr("drawable");
     if drawable.is_empty() {
         return None;
@@ -419,7 +495,10 @@ fn adaptive_icon_layer_color(
     table: &ResourceTable,
     preferred_locale: &str,
 ) -> Option<String> {
-    let child = node.children.iter().find(|child| child.name == layer_name)?;
+    let child = node
+        .children
+        .iter()
+        .find(|child| child.name == layer_name)?;
     let drawable = child.android_attr("drawable");
     if drawable.is_empty() {
         return None;
@@ -451,7 +530,9 @@ fn render_adaptive_layer(
     }
 
     let xml = parse_binary_manifest(&data).ok()?;
-    if let Some(inset) = inset_drawable_to_svg(bytes, entries, table, &xml, preferred_locale, is_foreground) {
+    if let Some(inset) =
+        inset_drawable_to_svg(bytes, entries, table, &xml, preferred_locale, is_foreground)
+    {
         return Some(inset);
     }
 
@@ -461,7 +542,7 @@ fn render_adaptive_layer(
 
     if xml.name == "vector" {
         let viewport = vector_viewport(&xml);
-        let paths = vector_svg_markup(&xml, Some(table), preferred_locale)?;
+        let paths = vector_svg_markup(bytes, entries, &xml, Some(table), preferred_locale)?;
         return Some(format!(
             r#"<svg x="0" y="0" width="108" height="108" viewBox="0 0 {} {}">{paths}</svg>"#,
             viewport.width, viewport.height
@@ -472,7 +553,16 @@ fn render_adaptive_layer(
         .into_iter()
         .filter_map(|resource_ref| table.resolve_file(&resource_ref, preferred_locale))
         .filter(|resolved_path| resolved_path != path)
-        .find_map(|resolved_path| render_adaptive_layer(bytes, entries, table, &resolved_path, preferred_locale, is_foreground))
+        .find_map(|resolved_path| {
+            render_adaptive_layer(
+                bytes,
+                entries,
+                table,
+                &resolved_path,
+                preferred_locale,
+                is_foreground,
+            )
+        })
 }
 
 fn inset_drawable_to_svg(
@@ -489,7 +579,14 @@ fn inset_drawable_to_svg(
 
     let drawable = node.android_attr("drawable");
     let path = table.resolve_file(&drawable, preferred_locale)?;
-    let layer = render_adaptive_layer(bytes, entries, table, &path, preferred_locale, is_foreground)?;
+    let layer = render_adaptive_layer(
+        bytes,
+        entries,
+        table,
+        &path,
+        preferred_locale,
+        is_foreground,
+    )?;
     let left = parse_float_attr(node, "android:insetLeft").unwrap_or(0.0);
     let right = parse_float_attr(node, "android:insetRight").unwrap_or(0.0);
     let top = parse_float_attr(node, "android:insetTop").unwrap_or(0.0);
@@ -502,7 +599,11 @@ fn inset_drawable_to_svg(
     ))
 }
 
-fn shape_drawable_to_svg(node: &XmlNode, table: &ResourceTable, preferred_locale: &str) -> Option<String> {
+fn shape_drawable_to_svg(
+    node: &XmlNode,
+    table: &ResourceTable,
+    preferred_locale: &str,
+) -> Option<String> {
     if node.name == "shape" {
         if let Some(gradient) = node.children.iter().find(|child| child.name == "gradient") {
             return gradient_to_svg(gradient, table, preferred_locale);
@@ -510,7 +611,9 @@ fn shape_drawable_to_svg(node: &XmlNode, table: &ResourceTable, preferred_locale
 
         if let Some(solid) = node.children.iter().find(|child| child.name == "solid") {
             let color = svg_color(&solid.android_attr("color"), Some(table), preferred_locale)?;
-            return Some(format!(r#"<rect width="108" height="108" fill="{color}"/>"#));
+            return Some(format!(
+                r#"<rect width="108" height="108" fill="{color}"/>"#
+            ));
         }
     }
 
@@ -523,22 +626,54 @@ fn shape_drawable_to_svg(node: &XmlNode, table: &ResourceTable, preferred_locale
         .find_map(|child| shape_drawable_to_svg(child, table, preferred_locale))
 }
 
-fn gradient_to_svg(node: &XmlNode, table: &ResourceTable, preferred_locale: &str) -> Option<String> {
+fn gradient_to_svg(
+    node: &XmlNode,
+    table: &ResourceTable,
+    preferred_locale: &str,
+) -> Option<String> {
     let id = "bg-gradient";
+    let gradient = gradient_def_markup(node, id, table, preferred_locale)?;
+
+    Some(format!(
+        r#"<defs>{gradient}</defs><rect width="108" height="108" fill="url(#{id})"/>"#
+    ))
+}
+
+fn gradient_def_markup(
+    node: &XmlNode,
+    id: &str,
+    table: &ResourceTable,
+    preferred_locale: &str,
+) -> Option<String> {
     let stops = gradient_stops(node, table, preferred_locale)?;
-    let angle = parse_typed_float(&node.android_attr("angle")).unwrap_or(270.0);
-    let (x1, y1, x2, y2) = gradient_vector(angle);
     let stop_markup = stops
         .into_iter()
         .map(|(offset, color)| format!(r#"<stop offset="{offset}%" stop-color="{color}"/>"#))
         .collect::<String>();
 
+    if let (Some(x1), Some(y1), Some(x2), Some(y2)) = (
+        parse_float_attr(node, "android:startX"),
+        parse_float_attr(node, "android:startY"),
+        parse_float_attr(node, "android:endX"),
+        parse_float_attr(node, "android:endY"),
+    ) {
+        return Some(format!(
+            r#"<linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}">{stop_markup}</linearGradient>"#
+        ));
+    }
+
+    let angle = parse_typed_float(&node.android_attr("angle")).unwrap_or(270.0);
+    let (x1, y1, x2, y2) = gradient_vector(angle);
     Some(format!(
-        r#"<defs><linearGradient id="{id}" x1="{x1}%" y1="{y1}%" x2="{x2}%" y2="{y2}%">{stop_markup}</linearGradient></defs><rect width="108" height="108" fill="url(#{id})"/>"#
+        r#"<linearGradient id="{id}" x1="{x1}%" y1="{y1}%" x2="{x2}%" y2="{y2}%">{stop_markup}</linearGradient>"#
     ))
 }
 
-fn gradient_stops(node: &XmlNode, table: &ResourceTable, preferred_locale: &str) -> Option<Vec<(f32, String)>> {
+fn gradient_stops(
+    node: &XmlNode,
+    table: &ResourceTable,
+    preferred_locale: &str,
+) -> Option<Vec<(f32, String)>> {
     let item_stops = node
         .children
         .iter()
@@ -554,11 +689,23 @@ fn gradient_stops(node: &XmlNode, table: &ResourceTable, preferred_locale: &str)
         return Some(item_stops);
     }
 
-    let start = svg_color(&node.android_attr("startColor"), Some(table), preferred_locale)?;
-    let end = svg_color(&node.android_attr("endColor"), Some(table), preferred_locale)?;
+    let start = svg_color(
+        &node.android_attr("startColor"),
+        Some(table),
+        preferred_locale,
+    )?;
+    let end = svg_color(
+        &node.android_attr("endColor"),
+        Some(table),
+        preferred_locale,
+    )?;
     let mut stops = vec![(0.0, start)];
 
-    if let Some(center) = svg_color(&node.android_attr("centerColor"), Some(table), preferred_locale) {
+    if let Some(center) = svg_color(
+        &node.android_attr("centerColor"),
+        Some(table),
+        preferred_locale,
+    ) {
         stops.push((50.0, center));
     }
 
@@ -581,6 +728,8 @@ fn gradient_vector(angle: f32) -> (f32, f32, f32, f32) {
 }
 
 fn vector_to_svg_data_url(
+    bytes: &[u8],
+    entries: &[ZipEntry],
     node: &XmlNode,
     resource_table: Option<&ResourceTable>,
     preferred_locale: &str,
@@ -590,7 +739,7 @@ fn vector_to_svg_data_url(
     }
 
     let viewport = vector_viewport(node);
-    let body = vector_svg_markup(node, resource_table, preferred_locale)?;
+    let body = vector_svg_markup(bytes, entries, node, resource_table, preferred_locale)?;
 
     if body.is_empty() {
         return None;
@@ -600,7 +749,10 @@ fn vector_to_svg_data_url(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}">{body}</svg>"#,
         viewport.width, viewport.height
     );
-    Some(format!("data:image/svg+xml;base64,{}", base64_encode(svg.as_bytes())))
+    Some(format!(
+        "data:image/svg+xml;base64,{}",
+        base64_encode(svg.as_bytes())
+    ))
 }
 
 struct SvgViewport {
@@ -622,10 +774,13 @@ fn vector_viewport(node: &XmlNode) -> SvgViewport {
 #[derive(Default)]
 struct SvgContext {
     clip_index: usize,
+    gradient_index: usize,
     defs: String,
 }
 
 fn vector_svg_markup(
+    bytes: &[u8],
+    entries: &[ZipEntry],
     node: &XmlNode,
     resource_table: Option<&ResourceTable>,
     preferred_locale: &str,
@@ -634,7 +789,16 @@ fn vector_svg_markup(
     let body = node
         .children
         .iter()
-        .map(|child| render_vector_node(child, resource_table, preferred_locale, &mut context))
+        .map(|child| {
+            render_vector_node(
+                bytes,
+                entries,
+                child,
+                resource_table,
+                preferred_locale,
+                &mut context,
+            )
+        })
         .collect::<String>();
 
     if body.is_empty() {
@@ -649,13 +813,22 @@ fn vector_svg_markup(
 }
 
 fn render_vector_node(
+    bytes: &[u8],
+    entries: &[ZipEntry],
     node: &XmlNode,
     resource_table: Option<&ResourceTable>,
     preferred_locale: &str,
     context: &mut SvgContext,
 ) -> String {
     if node.name == "path" {
-        return render_svg_path(node, resource_table, preferred_locale);
+        return render_svg_path(
+            bytes,
+            entries,
+            node,
+            resource_table,
+            preferred_locale,
+            context,
+        );
     }
 
     if node.name == "clip-path" {
@@ -666,7 +839,16 @@ fn render_vector_node(
         .children
         .iter()
         .filter(|child| child.name != "clip-path")
-        .map(|child| render_vector_node(child, resource_table, preferred_locale, context))
+        .map(|child| {
+            render_vector_node(
+                bytes,
+                entries,
+                child,
+                resource_table,
+                preferred_locale,
+                context,
+            )
+        })
         .collect::<String>();
 
     if content.is_empty() {
@@ -688,7 +870,9 @@ fn render_vector_node(
             .into_iter()
             .map(|path_data| format!(r#"<path d="{}"/>"#, escape_xml(&path_data)))
             .collect::<String>();
-        context.defs.push_str(&format!(r#"<clipPath id="{clip_id}">{paths}</clipPath>"#));
+        context
+            .defs
+            .push_str(&format!(r#"<clipPath id="{clip_id}">{paths}</clipPath>"#));
         content = format!(r#"<g clip-path="url(#{clip_id})">{content}</g>"#);
     }
 
@@ -700,15 +884,33 @@ fn render_vector_node(
     }
 }
 
-fn render_svg_path(node: &XmlNode, resource_table: Option<&ResourceTable>, preferred_locale: &str) -> String {
+fn render_svg_path(
+    bytes: &[u8],
+    entries: &[ZipEntry],
+    node: &XmlNode,
+    resource_table: Option<&ResourceTable>,
+    preferred_locale: &str,
+    context: &mut SvgContext,
+) -> String {
     let path_data = node.android_attr("pathData");
     if path_data.is_empty() {
         return String::new();
     }
 
-    let fill = svg_color(&node.android_attr("fillColor"), resource_table, preferred_locale)
-        .unwrap_or_else(|| "none".to_owned());
-    let stroke = svg_color(&node.android_attr("strokeColor"), resource_table, preferred_locale);
+    let fill = svg_paint(
+        bytes,
+        entries,
+        &node.android_attr("fillColor"),
+        resource_table,
+        preferred_locale,
+        context,
+    )
+    .unwrap_or_else(|| "none".to_owned());
+    let stroke = svg_color(
+        &node.android_attr("strokeColor"),
+        resource_table,
+        preferred_locale,
+    );
     let stroke_width = parse_float_attr(node, "android:strokeWidth");
     let mut out = format!(r#"<path d="{}" fill="{fill}""#, escape_xml(&path_data));
 
@@ -726,6 +928,34 @@ fn render_svg_path(node: &XmlNode, resource_table: Option<&ResourceTable>, prefe
 
     out.push_str("/>");
     out
+}
+
+fn svg_paint(
+    bytes: &[u8],
+    entries: &[ZipEntry],
+    value: &str,
+    resource_table: Option<&ResourceTable>,
+    preferred_locale: &str,
+    context: &mut SvgContext,
+) -> Option<String> {
+    if let Some(color) = svg_color(value, resource_table, preferred_locale) {
+        return Some(color);
+    }
+
+    let table = resource_table?;
+    let path = table.resolve_file(value, preferred_locale)?;
+    let entry = entries.iter().find(|entry| entry.name == path)?;
+    let data = read_zip_entry_data(bytes, entry).ok()?;
+    let xml = parse_binary_manifest(&data).ok()?;
+    if xml.name != "gradient" {
+        return None;
+    }
+
+    let id = format!("fill-gradient-{}", context.gradient_index);
+    context.gradient_index += 1;
+    let gradient = gradient_def_markup(&xml, &id, table, preferred_locale)?;
+    context.defs.push_str(&gradient);
+    Some(format!("url(#{id})"))
 }
 
 fn svg_transform(node: &XmlNode) -> String {
@@ -781,7 +1011,11 @@ fn parse_typed_float(value: &str) -> Option<f32> {
     value.parse().ok()
 }
 
-fn svg_color(value: &str, resource_table: Option<&ResourceTable>, preferred_locale: &str) -> Option<String> {
+fn svg_color(
+    value: &str,
+    resource_table: Option<&ResourceTable>,
+    preferred_locale: &str,
+) -> Option<String> {
     if value.starts_with("@0x7f") {
         let resolved = resource_table?.resolve_color(value, preferred_locale)?;
         return svg_color(&resolved, resource_table, preferred_locale);
@@ -931,7 +1165,12 @@ fn collect_abis(native_libs: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn detect_tech_features(bytes: &[u8], entries: &[ZipEntry], names: &[String], native_libs: &[String]) -> Vec<TechFeature> {
+fn detect_tech_features(
+    bytes: &[u8],
+    entries: &[ZipEntry],
+    names: &[String],
+    native_libs: &[String],
+) -> Vec<TechFeature> {
     let mut features = Vec::new();
     let dex_entries: Vec<&ZipEntry> = entries
         .iter()
@@ -939,30 +1178,44 @@ fn detect_tech_features(bytes: &[u8], entries: &[ZipEntry], names: &[String], na
         .collect();
 
     if names.iter().any(|name| name.ends_with(".kotlin_module"))
-        || dex_entries.iter().any(|entry| dex_contains(bytes, entry, &[b"Lkotlin/Metadata;", b"kotlin/"]))
+        || dex_entries
+            .iter()
+            .any(|entry| dex_contains(bytes, entry, &[b"Lkotlin/Metadata;", b"kotlin/"]))
     {
         features.push(tech_feature("Kotlin", "kotlin"));
     }
 
-    if dex_entries
-        .iter()
-        .any(|entry| dex_contains(bytes, entry, &[b"androidx/compose/", b"androidx.compose.", b"ComposerKt"]))
-    {
+    if dex_entries.iter().any(|entry| {
+        dex_contains(
+            bytes,
+            entry,
+            &[b"androidx/compose/", b"androidx.compose.", b"ComposerKt"],
+        )
+    }) {
         features.push(tech_feature("Compose", "jetpackcompose"));
     }
 
-    if names.iter().any(|name| name.to_ascii_lowercase().contains("gradle"))
-        || dex_entries
-            .iter()
-            .any(|entry| dex_contains(bytes, entry, &[b"com.android.tools.build", b"gradle", b"Gradle"]))
+    if names
+        .iter()
+        .any(|name| name.to_ascii_lowercase().contains("gradle"))
+        || dex_entries.iter().any(|entry| {
+            dex_contains(
+                bytes,
+                entry,
+                &[b"com.android.tools.build", b"gradle", b"Gradle"],
+            )
+        })
     {
         features.push(tech_feature("Gradle", "gradle"));
     }
 
-    if dex_entries
-        .iter()
-        .any(|entry| dex_contains(bytes, entry, &[b"kotlinx/coroutines/", b"kotlinx.coroutines."]))
-    {
+    if dex_entries.iter().any(|entry| {
+        dex_contains(
+            bytes,
+            entry,
+            &[b"kotlinx/coroutines/", b"kotlinx.coroutines."],
+        )
+    }) {
         features.push(tech_feature("Coroutines", "kotlin"));
     }
 
@@ -992,11 +1245,16 @@ fn dex_contains(bytes: &[u8], entry: &ZipEntry, patterns: &[&[u8]]) -> bool {
         return false;
     };
 
-    patterns.iter().any(|pattern| contains_bytes(&data, pattern))
+    patterns
+        .iter()
+        .any(|pattern| contains_bytes(&data, pattern))
 }
 
 fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    !needle.is_empty() && haystack.windows(needle.len()).any(|window| window == needle)
+    !needle.is_empty()
+        && haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
 }
 
 fn collect_signatures(names: &[String]) -> Result<Vec<String>, regex::Error> {
@@ -1041,6 +1299,23 @@ mod tests {
         assert_eq!(info.file_count, 1);
 
         let _ = fs::remove_file(apk_path);
+    }
+
+    #[test]
+    fn sdk_attrs_have_manifest_fallbacks() {
+        let manifest = XmlNode {
+            name: "manifest".to_owned(),
+            attrs: vec![("platformBuildVersionCode".to_owned(), "35".to_owned())],
+            children: vec![XmlNode {
+                name: "uses-sdk".to_owned(),
+                attrs: vec![("android:targetSdkVersion".to_owned(), "34".to_owned())],
+                children: Vec::new(),
+            }],
+        };
+        let uses_sdk = manifest.children_named("uses-sdk").into_iter().next();
+
+        assert_eq!(sdk_attr(&manifest, uses_sdk, "targetSdkVersion"), "34");
+        assert_eq!(compile_sdk_attr(&manifest), "35");
     }
 
     fn write_minimal_zip_with_deflated_manifest(
@@ -1124,7 +1399,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod real_apk_tests {
     use super::*;
@@ -1146,8 +1420,14 @@ mod real_apk_tests {
         assert!(!info.resolved_app_label.is_empty());
         assert!(!info.resolved_app_icon.is_empty());
         assert!(!info.supported_languages.is_empty());
-        assert!(info.permissions.iter().any(|item| item == "android.permission.INTERNET"));
-        assert!(info.activities.iter().any(|item| item == "com.salt.music.ui.MainActivity"));
+        assert!(info
+            .permissions
+            .iter()
+            .any(|item| item == "android.permission.INTERNET"));
+        assert!(info
+            .activities
+            .iter()
+            .any(|item| item == "com.salt.music.ui.MainActivity"));
     }
 
     #[test]
@@ -1158,8 +1438,12 @@ mod real_apk_tests {
         }
 
         let info = parse_apk_file(apk_path.to_str().unwrap()).expect("keios apk should parse");
-        assert!(info.app_icon_data_url.starts_with("data:image/svg+xml;base64,"));
-        let svg_base64 = info.app_icon_data_url.trim_start_matches("data:image/svg+xml;base64,");
+        assert!(info
+            .app_icon_data_url
+            .starts_with("data:image/svg+xml;base64,"));
+        let svg_base64 = info
+            .app_icon_data_url
+            .trim_start_matches("data:image/svg+xml;base64,");
         let svg_bytes = base64_decode_for_test(svg_base64);
         let svg = String::from_utf8_lossy(&svg_bytes);
         assert!(svg.contains("<linearGradient"));
@@ -1169,7 +1453,9 @@ mod real_apk_tests {
 
     #[test]
     fn prefers_anydpi_v26_icon() {
-        let apk_path = Path::new("/Users/cacheci/Downloads/Yukigram/11.2.0-alpha01-2026032801-moriafly-arm64-v8a.apk");
+        let apk_path = Path::new(
+            "/Users/cacheci/Downloads/Yukigram/11.2.0-alpha01-2026032801-moriafly-arm64-v8a.apk",
+        );
         if !apk_path.exists() {
             return;
         }
@@ -1177,7 +1463,9 @@ mod real_apk_tests {
         let info = parse_apk_file(apk_path.to_str().unwrap()).expect("salt apk should parse");
         assert_eq!(info.resolved_app_icon, "res/BW.xml");
         assert!(!info.app_icon_data_url.is_empty());
-        let svg_base64 = info.app_icon_data_url.trim_start_matches("data:image/svg+xml;base64,");
+        let svg_base64 = info
+            .app_icon_data_url
+            .trim_start_matches("data:image/svg+xml;base64,");
         let svg_bytes = base64_decode_for_test(svg_base64);
         let svg = String::from_utf8_lossy(&svg_bytes);
         assert!(svg.contains("scale(0.13034482 0.13034482)"));
@@ -1185,18 +1473,59 @@ mod real_apk_tests {
 
     #[test]
     fn crops_adaptive_icon_to_launcher_safe_zone() {
-        let apk_path = Path::new("/Users/cacheci/Downloads/Yukigram/HyperMarket-v1.0.0(2)-release.apk");
+        let apk_path =
+            Path::new("/Users/cacheci/Downloads/Yukigram/HyperMarket-v1.0.0(2)-release.apk");
         if !apk_path.exists() {
             return;
         }
 
-        let info = parse_apk_file(apk_path.to_str().unwrap()).expect("hypermarket apk should parse");
-        let svg_base64 = info.app_icon_data_url.trim_start_matches("data:image/svg+xml;base64,");
+        let info =
+            parse_apk_file(apk_path.to_str().unwrap()).expect("hypermarket apk should parse");
+        let svg_base64 = info
+            .app_icon_data_url
+            .trim_start_matches("data:image/svg+xml;base64,");
         let svg_bytes = base64_decode_for_test(svg_base64);
         let svg = String::from_utf8_lossy(&svg_bytes);
         assert!(svg.contains(r#"viewBox="18 18 72 72""#));
         assert!(svg.contains("translate(54 54)"));
         assert!(svg.contains("scale(0.7"));
+    }
+
+    #[test]
+    fn renders_hypermarket_compose_icon_background() {
+        let apk_path = Path::new("/Volumes/EXT/Workspace/HyperMarket/android/build/outputs/apk/release/HyperMarket-v2.0.5(5)-release-unsigned.apk");
+        if !apk_path.exists() {
+            return;
+        }
+
+        let info =
+            parse_apk_file(apk_path.to_str().unwrap()).expect("hypermarket apk should parse");
+        let svg_base64 = info
+            .app_icon_data_url
+            .trim_start_matches("data:image/svg+xml;base64,");
+        let svg_bytes = base64_decode_for_test(svg_base64);
+        let svg = String::from_utf8_lossy(&svg_bytes);
+        assert_eq!(info.resolved_app_icon, "res/BW.xml");
+        assert!(svg.contains(r#"viewBox="18 18 72 72""#));
+        assert!(svg.contains(r#"<linearGradient id="fill-gradient-0" gradientUnits="userSpaceOnUse" x1="0" y1="1024" x2="1024" y2="0""#));
+        assert!(svg.contains(r#"fill="url(#fill-gradient-0)""#));
+        assert!(svg.contains(r##"stop-color="#f56e47""##));
+    }
+
+    #[test]
+    fn parses_hypermarket_release_sdk_fields() {
+        let apk_path = Path::new(
+            "/Volumes/EXT/Workspace/HyperMarket/android/build/outputs/apk/release/HyperMarket-v2.1.2(8)-release.apk",
+        );
+        if !apk_path.exists() {
+            return;
+        }
+
+        let info = parse_apk_file(apk_path.to_str().unwrap())
+            .expect("hypermarket release apk should parse");
+        assert_eq!(info.min_sdk, "26");
+        assert_eq!(info.target_sdk, "37");
+        assert_eq!(info.compile_sdk, "37");
     }
 
     #[test]
@@ -1237,7 +1566,8 @@ mod real_apk_tests {
             return;
         }
 
-        let info = parse_apk_file(apk_path.to_str().unwrap()).expect("zip64 record apk should parse");
+        let info =
+            parse_apk_file(apk_path.to_str().unwrap()).expect("zip64 record apk should parse");
         assert_eq!(info.package_name, "android.appsecurity.cts.tinyapp");
         assert_eq!(info.version_name, "1.0");
         assert_eq!(info.version_code, "10");

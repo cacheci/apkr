@@ -32,7 +32,11 @@ pub fn install_apk(path: String, adb_path: Option<String>) -> Result<String, Str
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        return Ok(if stdout.is_empty() { "安装完成".to_owned() } else { stdout });
+        return Ok(if stdout.is_empty() {
+            "安装完成".to_owned()
+        } else {
+            stdout
+        });
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
@@ -55,7 +59,9 @@ pub fn take_opened_files(opened_files: State<OpenedFiles>) -> Result<Vec<String>
 }
 
 fn resolve_adb(configured_path: Option<&str>) -> Result<PathBuf, String> {
-    let configured_path = configured_path.map(str::trim).filter(|path| !path.is_empty());
+    let configured_path = configured_path
+        .map(str::trim)
+        .filter(|path| !path.is_empty());
     if let Some(path) = configured_path {
         let adb = PathBuf::from(path);
         if adb.is_file() {

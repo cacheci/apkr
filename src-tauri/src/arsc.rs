@@ -85,7 +85,6 @@ impl ResourceTable {
     pub fn supported_languages(&self) -> Vec<String> {
         self.languages.iter().cloned().collect()
     }
-
 }
 
 fn parse_package(
@@ -110,7 +109,14 @@ fn parse_package(
         }
 
         if chunk_type == RES_TABLE_TYPE_TYPE {
-            parse_type_chunk(data, offset, package_id, &type_strings, global_strings, table)?;
+            parse_type_chunk(
+                data,
+                offset,
+                package_id,
+                &type_strings,
+                global_strings,
+                table,
+            )?;
         }
 
         offset += chunk_size;
@@ -135,7 +141,10 @@ fn parse_type_chunk(
     let config_offset = offset + 20;
     let locale = parse_config_locale(data, config_offset)?;
     let density = parse_config_density(data, config_offset)?;
-    let type_name = type_strings.get(type_id.saturating_sub(1) as usize).cloned().unwrap_or_default();
+    let type_name = type_strings
+        .get(type_id.saturating_sub(1) as usize)
+        .cloned()
+        .unwrap_or_default();
 
     if !locale.is_empty() {
         table.languages.insert(locale.clone());
@@ -183,19 +192,28 @@ fn parse_type_chunk(
             };
 
             if type_name == "string" || !looks_like_resource_file(&value) {
-                table.strings.entry(resource_id).or_default().push(ResourceValue {
-                    locale: locale.clone(),
-                    density,
-                    value: value.clone(),
-                });
+                table
+                    .strings
+                    .entry(resource_id)
+                    .or_default()
+                    .push(ResourceValue {
+                        locale: locale.clone(),
+                        density,
+                        value: value.clone(),
+                    });
             }
 
-            if type_name == "drawable" || type_name == "mipmap" || looks_like_resource_file(&value) {
-                table.files.entry(resource_id).or_default().push(ResourceValue {
-                    locale: locale.clone(),
-                    density,
-                    value,
-                });
+            if type_name == "drawable" || type_name == "mipmap" || looks_like_resource_file(&value)
+            {
+                table
+                    .files
+                    .entry(resource_id)
+                    .or_default()
+                    .push(ResourceValue {
+                        locale: locale.clone(),
+                        density,
+                        value,
+                    });
             }
         }
     }
@@ -250,7 +268,9 @@ fn decode_language(first: u8, second: u8) -> String {
         let third_char = ((second & 0x7c) >> 2) + b'a';
         return String::from_utf8_lossy(&[first_char, second_char, third_char]).to_string();
     }
-    String::from_utf8_lossy(&[first, second]).trim_matches('\0').to_string()
+    String::from_utf8_lossy(&[first, second])
+        .trim_matches('\0')
+        .to_string()
 }
 
 fn decode_region(first: u8, second: u8) -> String {
@@ -263,7 +283,9 @@ fn decode_region(first: u8, second: u8) -> String {
         let third_digit = ((second & 0x7c) >> 2) + b'0';
         return String::from_utf8_lossy(&[first_digit, second_digit, third_digit]).to_string();
     }
-    String::from_utf8_lossy(&[first, second]).trim_matches('\0').to_string()
+    String::from_utf8_lossy(&[first, second])
+        .trim_matches('\0')
+        .to_string()
 }
 
 fn choose_locale_value(values: &[ResourceValue], preferred_locale: &str) -> Option<String> {
@@ -363,7 +385,9 @@ fn is_anydpi(density: u16) -> bool {
 }
 
 fn parse_resource_ref(value: &str) -> Option<u32> {
-    value.strip_prefix("@0x").and_then(|hex| u32::from_str_radix(hex, 16).ok())
+    value
+        .strip_prefix("@0x")
+        .and_then(|hex| u32::from_str_radix(hex, 16).ok())
 }
 
 fn parse_string_pool(data: &[u8], offset: usize) -> Result<Vec<String>, String> {
@@ -402,7 +426,9 @@ fn read_utf8_string(data: &[u8], mut offset: usize) -> Result<(String, usize), S
     let (byte_len, next) = read_len8(data, offset)?;
     offset = next;
     let end = offset + byte_len;
-    let raw = data.get(offset..end).ok_or_else(|| "字符串池 UTF-8 越界".to_owned())?;
+    let raw = data
+        .get(offset..end)
+        .ok_or_else(|| "字符串池 UTF-8 越界".to_owned())?;
     Ok((String::from_utf8_lossy(raw).to_string(), end + 1))
 }
 
@@ -410,8 +436,13 @@ fn read_utf16_string(data: &[u8], mut offset: usize) -> Result<(String, usize), 
     let (char_len, next) = read_len16(data, offset)?;
     offset = next;
     let end = offset + char_len * 2;
-    let raw = data.get(offset..end).ok_or_else(|| "字符串池 UTF-16 越界".to_owned())?;
-    let units = raw.chunks_exact(2).map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]])).collect::<Vec<_>>();
+    let raw = data
+        .get(offset..end)
+        .ok_or_else(|| "字符串池 UTF-16 越界".to_owned())?;
+    let units = raw
+        .chunks_exact(2)
+        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
+        .collect::<Vec<_>>();
     Ok((String::from_utf16_lossy(&units), end + 2))
 }
 
@@ -420,7 +451,10 @@ fn read_len8(data: &[u8], mut offset: usize) -> Result<(usize, usize), String> {
     offset += 1;
     if first & 0x80 != 0 {
         let second = byte_at(data, offset)?;
-        Ok(((((first & 0x7f) as usize) << 8) | second as usize, offset + 1))
+        Ok((
+            (((first & 0x7f) as usize) << 8) | second as usize,
+            offset + 1,
+        ))
     } else {
         Ok((first as usize, offset))
     }
@@ -431,7 +465,10 @@ fn read_len16(data: &[u8], mut offset: usize) -> Result<(usize, usize), String> 
     offset += 2;
     if first & 0x8000 != 0 {
         let second = u16_at(data, offset)?;
-        Ok(((((first & 0x7fff) as usize) << 16) | second as usize, offset + 2))
+        Ok((
+            (((first & 0x7fff) as usize) << 16) | second as usize,
+            offset + 2,
+        ))
     } else {
         Ok((first as usize, offset))
     }

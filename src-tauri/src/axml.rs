@@ -22,7 +22,10 @@ pub struct XmlNode {
 
 impl XmlNode {
     pub fn children_named<'a>(&'a self, name: &str) -> Vec<&'a XmlNode> {
-        self.children.iter().filter(|child| child.name == name).collect()
+        self.children
+            .iter()
+            .filter(|child| child.name == name)
+            .collect()
     }
 
     pub fn attr(&self, name: &str) -> String {
@@ -102,7 +105,12 @@ fn looks_like_binary_xml(data: &[u8]) -> Result<bool, String> {
         && u16_at(data, header_size)? == RES_STRING_POOL_TYPE)
 }
 
-fn parse_resource_map(data: &[u8], offset: usize, header_size: usize, chunk_size: usize) -> Vec<u32> {
+fn parse_resource_map(
+    data: &[u8],
+    offset: usize,
+    header_size: usize,
+    chunk_size: usize,
+) -> Vec<u32> {
     let count = (chunk_size - header_size) / 4;
     (0..count)
         .filter_map(|i| u32_at(data, offset + header_size + i * 4).ok())
@@ -132,13 +140,16 @@ fn parse_start_element(
         let raw_idx = u32_at(data, item + 8)?;
         let value_type = byte_at(data, item + 15)?;
         let data_value = u32_at(data, item + 16)?;
-        let mut attr_name = string_at(strings, name_idx as usize);
-
-        if attr_name.is_empty() {
-            attr_name = attr_name_from_resource_map(resource_ids, name_idx);
-        }
-
         let ns = string_at(strings, ns_idx as usize);
+        let resource_attr_name = attr_name_from_resource_map(resource_ids, name_idx);
+        let string_attr_name = string_at(strings, name_idx as usize);
+        let attr_name = if ns == ANDROID_NS && is_sdk_attr(&resource_attr_name) {
+            resource_attr_name
+        } else if string_attr_name.is_empty() {
+            resource_attr_name
+        } else {
+            string_attr_name
+        };
         let raw = string_at(strings, raw_idx as usize);
         let value = format_typed_value(strings, value_type, data_value, &raw);
         let key = if ns == ANDROID_NS && !attr_name.is_empty() {
@@ -152,7 +163,11 @@ fn parse_start_element(
         }
     }
 
-    Ok(XmlNode { name, attrs, children: Vec::new() })
+    Ok(XmlNode {
+        name,
+        attrs,
+        children: Vec::new(),
+    })
 }
 
 fn parse_string_pool(data: &[u8], offset: usize) -> Result<Vec<String>, String> {
@@ -216,7 +231,10 @@ fn read_len8(data: &[u8], mut offset: usize) -> Result<(usize, usize), String> {
     offset += 1;
     if first & 0x80 != 0 {
         let second = byte_at(data, offset)?;
-        Ok(((((first & 0x7f) as usize) << 8) | second as usize, offset + 1))
+        Ok((
+            (((first & 0x7f) as usize) << 8) | second as usize,
+            offset + 1,
+        ))
     } else {
         Ok((first as usize, offset))
     }
@@ -227,7 +245,10 @@ fn read_len16(data: &[u8], mut offset: usize) -> Result<(usize, usize), String> 
     offset += 2;
     if first & 0x8000 != 0 {
         let second = u16_at(data, offset)?;
-        Ok(((((first & 0x7fff) as usize) << 16) | second as usize, offset + 2))
+        Ok((
+            (((first & 0x7fff) as usize) << 16) | second as usize,
+            offset + 2,
+        ))
     } else {
         Ok((first as usize, offset))
     }
@@ -278,6 +299,13 @@ fn attr_name_from_resource_map(resource_ids: &[u32], name_idx: u32) -> String {
     attr_name_from_res_id(id)
 }
 
+fn is_sdk_attr(name: &str) -> bool {
+    matches!(
+        name,
+        "minSdkVersion" | "targetSdkVersion" | "compileSdkVersion"
+    )
+}
+
 fn attr_name_from_res_id(id: u32) -> String {
     match id {
         0x0101_0001 => "label",
@@ -285,9 +313,9 @@ fn attr_name_from_res_id(id: u32) -> String {
         0x0101_0003 => "name",
         0x0101_021b => "versionCode",
         0x0101_021c => "versionName",
+        0x0101_000f => "debuggable",
         0x0101_020c => "minSdkVersion",
-        0x0101_0270 => "debuggable",
-        0x0101_0272 => "targetSdkVersion",
+        0x0101_0270 => "targetSdkVersion",
         0x0101_0572 => "compileSdkVersion",
         0x0101_0402 => "drawable",
         0x0101_03fb => "height",
@@ -319,4 +347,16 @@ fn attr_name_from_res_id(id: u32) -> String {
         _ => return format!("attr_0x{id:08x}"),
     }
     .to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_sdk_resource_ids_to_android_attrs() {
+        assert_eq!(attr_name_from_res_id(0x0101_020c), "minSdkVersion");
+        assert_eq!(attr_name_from_res_id(0x0101_0270), "targetSdkVersion");
+        assert_eq!(attr_name_from_res_id(0x0101_0572), "compileSdkVersion");
+    }
 }

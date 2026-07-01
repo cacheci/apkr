@@ -13,8 +13,11 @@ type ApkInfo = {
   version_name: string;
   version_code: string;
   min_sdk: string;
+  minSdk?: string;
   target_sdk: string;
+  targetSdk?: string;
   compile_sdk: string;
+  compileSdk?: string;
   app_label: string;
   resolved_app_label: string;
   app_icon: string;
@@ -148,15 +151,16 @@ const androidVersions: Record<string, string> = {
   "25": "Android 7.1 Nougat",
   "26": "Android 8.0 Oreo",
   "27": "Android 8.1 Oreo",
-  "28": "Android 9 Pie",
-  "29": "Android 10",
-  "30": "Android 11",
-  "31": "Android 12",
-  "32": "Android 12L",
-  "33": "Android 13",
-  "34": "Android 14",
-  "35": "Android 15",
-  "36": "Android 16",
+  "28": "Android 9.0 Pie",
+  "29": "Android 10.0 Q",
+  "30": "Android 11.0 R",
+  "31": "Android 12.0 S",
+  "32": "Android 12L Sv2",
+  "33": "Android 13.0 Tiramisu",
+  "34": "Android 14.0 UpsideDownCake",
+  "35": "Android 15.0 VanillaIceCream",
+  "36": "Android 16.0 Baklava",
+  "37": "Android 17.0 CinnamonBun",
 };
 
 const currentPath = document.querySelector<HTMLElement>("#current-path")!;
@@ -247,9 +251,9 @@ function renderInfo(info: ApkInfo) {
     [settings.language === "zh-CN" ? "应用名" : "App name", info.resolved_app_label || info.app_label],
     [settings.language === "zh-CN" ? "版本名" : "Version name", info.version_name],
     [settings.language === "zh-CN" ? "版本号" : "Version code", info.version_code],
-    [settings.language === "zh-CN" ? "最低 SDK" : "Min SDK", formatSdkVersion(info.min_sdk)],
-    [settings.language === "zh-CN" ? "目标 SDK" : "Target SDK", formatSdkVersion(info.target_sdk)],
-    [settings.language === "zh-CN" ? "编译 SDK" : "Compile SDK", formatSdkVersion(info.compile_sdk)],
+    [settings.language === "zh-CN" ? "最低 SDK" : "Min SDK", formatSdkVersion(sdkValue(info, "min"))],
+    [settings.language === "zh-CN" ? "目标 SDK" : "Target SDK", formatSdkVersion(sdkValue(info, "target"))],
+    [settings.language === "zh-CN" ? "编译 SDK" : "Compile SDK", formatSdkVersion(sdkValue(info, "compile"))],
     [settings.language === "zh-CN" ? "支持语言" : "Languages", info.supported_languages.join(", ") || t("defaultValue")],
     ["Debuggable", info.debuggable || t("debugDefault")],
     [settings.language === "zh-CN" ? "文件数量" : "File count", String(info.file_count)],
@@ -329,6 +333,16 @@ function escapeHtml(value: string) {
 
 function fileNameFromPath(path: string) {
   return path.split(/[\\/]/).pop() || path;
+}
+
+function sdkValue(info: ApkInfo, kind: "min" | "target" | "compile") {
+  if (kind === "min") {
+    return info.min_sdk || info.minSdk || "";
+  }
+  if (kind === "target") {
+    return info.target_sdk || info.targetSdk || "";
+  }
+  return info.compile_sdk || info.compileSdk || "";
 }
 
 function formatSdkVersion(value: string) {
