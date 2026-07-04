@@ -29,7 +29,7 @@
   "bundle": {
     "active": true,
     "targets": ["app"],
-    "icon": ["icons/icon_droid.icns"],
+    "icon": ["icons/icon.ico", "icons/icon.png", "icons/icon_droid.icns"],
     "fileAssociations": [
       {
         "ext": ["apk"],
