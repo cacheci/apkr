@@ -37,6 +37,12 @@ pnpm-debug.log*
 # Logs
 *.log
 
+# Gradle / Kotlin Multiplatform
+.gradle/
+.kotlin/
+**/build/
+local.properties
+
 # OS generated thumbnails
 Thumbs.db
 .DS_Store
