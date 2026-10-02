@@ -86,6 +86,7 @@ object ApkParser {
             resolvedAppLabel = resources?.resolveString(appLabel, preferredLocale).orEmpty(),
             appIcon = appIcon,
             resolvedAppIcon = resolvedIcon,
+            appIconDrawable = icon?.drawable,
             appIconBytes = icon?.bytes,
             appIconMimeType = icon?.mimeType,
             supportedLanguages = resources?.supportedLanguages.orEmpty(),

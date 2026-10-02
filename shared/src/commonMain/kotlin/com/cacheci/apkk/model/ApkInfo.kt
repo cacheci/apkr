@@ -14,6 +14,7 @@ data class ApkInfo(
     val resolvedAppLabel: String,
     val appIcon: String,
     val resolvedAppIcon: String,
+    val appIconDrawable: AppIconDrawable?,
     val appIconBytes: ByteArray?,
     val appIconMimeType: String?,
     val supportedLanguages: List<String>,

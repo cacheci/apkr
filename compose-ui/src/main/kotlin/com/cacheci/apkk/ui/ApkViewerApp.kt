@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -46,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
@@ -57,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cacheci.apkk.i18n.Strings
 import com.cacheci.apkk.model.ApkInfo
+import com.cacheci.apkk.model.AppIconDrawable
 import com.cacheci.apkk.model.AppLanguage
 import com.cacheci.apkk.model.AppSettings
 import com.cacheci.apkk.model.AppTheme
@@ -212,7 +215,8 @@ private fun DropCard(info: ApkInfo?, parsing: Boolean, strings: Strings, onClick
 @Composable
 private fun ApkIcon(info: ApkInfo?) {
     val density = LocalDensity.current
-    val painter = remember(info?.appIconBytes, info?.appIconMimeType, density) {
+    val drawable = info?.appIconDrawable
+    val fallbackPainter = remember(info?.appIconBytes, info?.appIconMimeType, density) {
         info?.appIconBytes?.let { bytes ->
             runCatching {
                 ByteArrayInputStream(bytes).use { input ->
@@ -226,10 +230,64 @@ private fun ApkIcon(info: ApkInfo?) {
         Modifier.size(66.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        if (painter != null) Image(painter, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-        else Icon(Icons.Default.Android, null, Modifier.size(42.dp), tint = Color(0xff76b5d2))
+        when {
+            drawable != null -> DrawableIcon(drawable, Modifier.fillMaxSize())
+            fallbackPainter != null -> Image(fallbackPainter, null, Modifier.fillMaxSize(), contentScale = ContentScale.Inside)
+            else -> Icon(Icons.Default.Android, null, Modifier.size(42.dp), tint = Color(0xff76b5d2))
+        }
     }
 }
+
+@Composable
+private fun DrawableIcon(
+    drawable: AppIconDrawable,
+    modifier: Modifier,
+    contentScale: ContentScale = ContentScale.Inside,
+) {
+    when (drawable) {
+        is AppIconDrawable.Encoded -> {
+            val density = LocalDensity.current
+            val painter = remember(drawable, density) {
+                runCatching {
+                    ByteArrayInputStream(drawable.bytes).use { input ->
+                        if (drawable.mimeType == "image/svg+xml") loadSvgPainter(input, density)
+                        else BitmapPainter(loadImageBitmap(input))
+                    }
+                }.getOrNull()
+            }
+            if (painter != null) Image(painter, null, modifier, contentScale = contentScale)
+        }
+
+        is AppIconDrawable.Solid -> Box(modifier.background(Color(drawable.argb.toInt())))
+
+        is AppIconDrawable.Adaptive -> Box(modifier.clip(RoundedCornerShape(percent = 22))) {
+            drawable.background?.let {
+                DrawableIcon(it, Modifier.fillMaxSize(), ContentScale.FillBounds)
+            }
+            drawable.foreground?.let {
+                DrawableIcon(it, Modifier.fillMaxSize(), ContentScale.FillBounds)
+            }
+        }
+
+        is AppIconDrawable.Layers -> Box(modifier) {
+            drawable.items.forEach { DrawableIcon(it, Modifier.fillMaxSize(), contentScale) }
+        }
+
+        is AppIconDrawable.Inset -> BoxWithConstraints(modifier) {
+            val left = maxWidth * (drawable.left / ANDROID_ICON_VIEWPORT)
+            val top = maxHeight * (drawable.top / ANDROID_ICON_VIEWPORT)
+            val right = maxWidth * (drawable.right / ANDROID_ICON_VIEWPORT)
+            val bottom = maxHeight * (drawable.bottom / ANDROID_ICON_VIEWPORT)
+            DrawableIcon(
+                drawable.drawable,
+                Modifier.fillMaxSize().padding(start = left, top = top, end = right, bottom = bottom),
+                contentScale,
+            )
+        }
+    }
+}
+
+private const val ANDROID_ICON_VIEWPORT = 108f
 
 @Composable
 private fun InfoGrid(info: ApkInfo, strings: Strings) {

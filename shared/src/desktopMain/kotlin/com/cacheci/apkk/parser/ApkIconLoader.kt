@@ -1,6 +1,6 @@
 package com.cacheci.apkk.parser
 
-import java.util.Base64
+import com.cacheci.apkk.model.AppIconDrawable
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
@@ -12,7 +12,12 @@ internal class ApkIconLoader(
 ) {
     private val entriesByName = entries.associateBy(ZipEntry::getName)
 
-    data class Result(val bytes: ByteArray, val mimeType: String, val path: String)
+    data class Result(
+        val drawable: AppIconDrawable,
+        val path: String,
+        val bytes: ByteArray?,
+        val mimeType: String?,
+    )
 
     fun load(vararg references: String): Result? = references.asSequence()
         .filter(String::isNotEmpty)
@@ -31,18 +36,15 @@ internal class ApkIconLoader(
         if (!visited.add(path)) return null
         val entry = entriesByName[path] ?: return null
         val data = zip.getInputStream(entry).use { it.readBytes() }
-        mimeType(path)?.let { return Result(data, it, path) }
+        mimeType(path)?.let { mimeType ->
+            val drawable = AppIconDrawable.Encoded(data, mimeType)
+            return Result(drawable, path, data, mimeType)
+        }
         if (!path.endsWith(".xml", ignoreCase = true)) return null
         val node = runCatching { BinaryXmlParser.parse(data) }.getOrNull() ?: return null
-        val svg = DrawableRenderer(resources, locale) { reference ->
-            val nestedPath = resources.resolveFile(reference, locale)
-                ?: reference.takeIf { it.startsWith("res/") }
-            nestedPath?.let { loadPath(it, visited.toMutableSet()) }
-        }.render(node)
-        if (svg != null) {
-            val svgBytes = svg.toByteArray()
-            SvgRasterizer.toPng(svgBytes)?.let { return Result(it, "image/png", path) }
-            if ("<image " !in svg) return Result(svgBytes, "image/svg+xml", path)
+        decodeNode(node, visited)?.let { drawable ->
+            val encoded = drawable as? AppIconDrawable.Encoded
+            return Result(drawable, path, encoded?.bytes, encoded?.mimeType)
         }
 
         return node.resourceReferences()
@@ -51,6 +53,94 @@ internal class ApkIconLoader(
             .filter { it != path }
             .mapNotNull { loadPath(it, visited.toMutableSet()) }
             .firstOrNull()
+    }
+
+    private fun decodeNode(node: XmlNode, visited: Set<String>): AppIconDrawable? = when (node.name) {
+        "adaptive-icon" -> decodeAdaptive(node, visited)
+        "vector" -> SvgLeafRenderer(::resolveColor).renderVector(node)?.asSvgDrawable()
+        "shape" -> SvgLeafRenderer(::resolveColor).renderShape(node)?.asSvgDrawable()
+        "layer-list" -> decodeLayerList(node, visited)
+        "inset" -> decodeInset(node, visited)
+        "selector" -> decodeSelector(node, visited)
+        "bitmap" -> decodeReference(node.androidAttr("src").ifEmpty { node.androidAttr("drawable") }, visited)
+        else -> decodeContainer(node, visited)
+    }
+
+    private fun decodeAdaptive(node: XmlNode, visited: Set<String>): AppIconDrawable? {
+        val background = node.children.firstOrNull { it.name == "background" }
+            ?.let { decodeContainer(it, visited) }
+        val foreground = (node.children.firstOrNull { it.name == "foreground" }
+            ?: node.children.firstOrNull { it.name == "monochrome" })
+            ?.let { decodeContainer(it, visited) }
+        if (background == null && foreground == null) return null
+        return AppIconDrawable.Adaptive(background, foreground)
+    }
+
+    private fun decodeLayerList(node: XmlNode, visited: Set<String>): AppIconDrawable? {
+        val layers = node.children.filter { it.name == "item" }.mapNotNull { item ->
+            decodeContainer(item, visited)?.let { drawable -> item.applyInsets(drawable) }
+        }
+        return layers.takeIf { it.isNotEmpty() }?.let { AppIconDrawable.Layers(it) }
+    }
+
+    private fun decodeInset(node: XmlNode, visited: Set<String>): AppIconDrawable? {
+        val drawable = decodeContainer(node, visited) ?: return null
+        return node.applyInsets(drawable)
+    }
+
+    private fun decodeSelector(node: XmlNode, visited: Set<String>): AppIconDrawable? {
+        val items = node.children.filter { it.name == "item" }
+        val selected = items.firstOrNull { item -> item.attributes.none { "state_" in it.name } }
+            ?: items.firstOrNull()
+            ?: return null
+        return decodeContainer(selected, visited)
+    }
+
+    private fun decodeContainer(node: XmlNode, visited: Set<String>): AppIconDrawable? {
+        val reference = node.androidAttr("drawable").ifEmpty { node.androidAttr("src") }
+        if (reference.isNotEmpty()) decodeReference(reference, visited)?.let { return it }
+        return node.children.firstNotNullOfOrNull { decodeNode(it, visited) }
+    }
+
+    private fun decodeReference(reference: String, visited: Set<String>): AppIconDrawable? {
+        if (reference.isEmpty()) return null
+        resolveColor(reference)?.let { return AppIconDrawable.Solid(it) }
+        val path = resources.resolveFile(reference, locale)
+            ?: reference.takeIf { it.startsWith("res/") }
+            ?: return null
+        return loadPath(path, visited.toMutableSet())?.drawable
+    }
+
+    private fun XmlNode.applyInsets(drawable: AppIconDrawable): AppIconDrawable {
+        val left = androidAttr("insetLeft").ifEmpty { androidAttr("left") }.typedFloat() ?: 0f
+        val top = androidAttr("insetTop").ifEmpty { androidAttr("top") }.typedFloat() ?: 0f
+        val right = androidAttr("insetRight").ifEmpty { androidAttr("right") }.typedFloat() ?: 0f
+        val bottom = androidAttr("insetBottom").ifEmpty { androidAttr("bottom") }.typedFloat() ?: 0f
+        return if (left == 0f && top == 0f && right == 0f && bottom == 0f) drawable else {
+            AppIconDrawable.Inset(drawable, left, top, right, bottom)
+        }
+    }
+
+    private fun resolveColor(value: String): Long? {
+        val encoded = when {
+            value.startsWith("#") -> value.removePrefix("#")
+            value.startsWith("@0x") && !value.startsWith("@0x7f") && !value.startsWith("@0x01") ->
+                value.removePrefix("@0x")
+            else -> resources.resolveColor(value, locale)?.removePrefix("@0x")
+        } ?: return null
+        val parsed = encoded.toLongOrNull(16) ?: return null
+        return when (encoded.length) {
+            3 -> ((parsed and 0xf00) shl 12) or ((parsed and 0xf00) shl 8) or
+                ((parsed and 0x0f0) shl 8) or ((parsed and 0x0f0) shl 4) or
+                ((parsed and 0x00f) shl 4) or (parsed and 0x00f) or 0xff000000
+            4 -> ((parsed and 0xf000) shl 16) or ((parsed and 0xf000) shl 12) or
+                ((parsed and 0x0f00) shl 12) or ((parsed and 0x0f00) shl 8) or
+                ((parsed and 0x00f0) shl 8) or ((parsed and 0x00f0) shl 4) or
+                ((parsed and 0x000f) shl 4) or (parsed and 0x000f)
+            6 -> parsed or 0xff000000
+            8 -> parsed
+            else -> null
+        }
     }
 
     private fun mimeType(path: String): String? = when (path.substringAfterLast('.', "").lowercase()) {
@@ -67,36 +157,26 @@ private fun XmlNode.resourceReferences(): List<String> = buildList {
     children.forEach { addAll(it.resourceReferences()) }
 }
 
-private class DrawableRenderer(
-    private val resources: ResourceTable,
-    private val locale: String,
-    private val resolveLayer: (String) -> ApkIconLoader.Result?,
+private class SvgLeafRenderer(
+    private val resolveColor: (String) -> Long?,
 ) {
-    fun render(node: XmlNode): String? = when (node.name) {
-        "adaptive-icon" -> renderAdaptive(node)
-        "vector" -> renderVector(node)
-        "shape" -> renderShape(node)?.let { wrapSvg(it) }
-        "layer-list" -> renderLayerList(node)?.let { wrapSvg(it) }
-        "inset" -> renderInset(node)?.let { wrapSvg(it) }
-        "selector" -> renderSelector(node)
-        "bitmap" -> renderBitmap(node)?.let { wrapSvg(it) }
-        else -> null
-    }
-
-    private fun renderVector(node: XmlNode): String? {
-        val width = node.androidAttr("viewportWidth").typedFloat() ?: 24f
-        val height = node.androidAttr("viewportHeight").typedFloat() ?: width
+    fun renderVector(node: XmlNode): String? {
+        val viewportWidth = node.androidAttr("viewportWidth").typedFloat() ?: 24f
+        val viewportHeight = node.androidAttr("viewportHeight").typedFloat() ?: viewportWidth
+        val width = node.androidAttr("width").typedFloat() ?: viewportWidth
+        val height = node.androidAttr("height").typedFloat() ?: viewportHeight
         val body = node.children.joinToString("") { renderVectorNode(it) }
         if (body.isEmpty()) return null
-        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 $width $height\">$body</svg>"
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" " +
+            "viewBox=\"0 0 $viewportWidth $viewportHeight\">$body</svg>"
     }
 
     private fun renderVectorNode(node: XmlNode): String {
         if (node.name == "path") {
             val data = node.androidAttr("pathData").xmlEscape()
             if (data.isEmpty()) return ""
-            val fill = color(node.androidAttr("fillColor")) ?: "none"
-            val stroke = color(node.androidAttr("strokeColor"))
+            val fill = resolveColor(node.androidAttr("fillColor"))?.svgColor() ?: "none"
+            val stroke = resolveColor(node.androidAttr("strokeColor"))?.svgColor()
             return buildString {
                 append("<path d=\"").append(data).append("\" fill=\"").append(fill).append('"')
                 node.androidAttr("fillAlpha").typedFloat()?.let { append(" fill-opacity=\"").append(it).append('"') }
@@ -116,49 +196,7 @@ private class DrawableRenderer(
         return if (transform.isEmpty()) content else "<g transform=\"${transform.xmlEscape()}\">$content</g>"
     }
 
-    private fun renderAdaptive(node: XmlNode): String? {
-        val background = node.children.firstOrNull { it.name == "background" }
-        val foreground = node.children.firstOrNull { it.name == "foreground" }
-            ?: node.children.firstOrNull { it.name == "monochrome" }
-        val backgroundBody = background?.let(::renderContainer)
-            ?: "<rect width=\"108\" height=\"108\" fill=\"#f0f0f0\"/>"
-        val foregroundBody = foreground?.let(::renderContainer).orEmpty()
-        if (backgroundBody.isEmpty() && foregroundBody.isEmpty()) return null
-        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"18 18 72 72\">$backgroundBody$foregroundBody</svg>"
-    }
-
-    private fun renderLayerList(node: XmlNode): String? {
-        val body = node.children.filter { it.name == "item" }.joinToString("") { renderContainer(it) }
-        return body.takeIf(String::isNotEmpty)
-    }
-
-    private fun renderInset(node: XmlNode): String? {
-        val content = renderContainer(node)
-        if (content.isEmpty()) return null
-        val left = node.androidAttr("insetLeft").typedFloat() ?: 0f
-        val top = node.androidAttr("insetTop").typedFloat() ?: 0f
-        val right = node.androidAttr("insetRight").typedFloat() ?: 0f
-        val bottom = node.androidAttr("insetBottom").typedFloat() ?: 0f
-        val width = (108f - left - right).coerceAtLeast(0f)
-        val height = (108f - top - bottom).coerceAtLeast(0f)
-        return "<svg x=\"$left\" y=\"$top\" width=\"$width\" height=\"$height\" viewBox=\"0 0 108 108\">$content</svg>"
-    }
-
-    private fun renderSelector(node: XmlNode): String? {
-        val items = node.children.filter { it.name == "item" }
-        val selected = items.firstOrNull { item -> item.attributes.none { "state_" in it.name } }
-            ?: items.firstOrNull()
-            ?: return null
-        val drawable = selected.androidAttr("drawable")
-        if (drawable.isNotEmpty()) {
-            val layer = resolveLayer(drawable) ?: return null
-            if (layer.mimeType == "image/svg+xml") return layer.bytes.toString(Charsets.UTF_8)
-            return wrapSvg(embed(layer))
-        }
-        return selected.children.firstNotNullOfOrNull(::render)
-    }
-
-    private fun renderShape(node: XmlNode): String? {
+    fun renderShape(node: XmlNode): String? {
         val corners = node.children.firstOrNull { it.name == "corners" }
         val radius = corners?.androidAttr("radius")?.typedFloat() ?: 0f
         val oval = node.androidAttr("shape") in setOf("1", "oval")
@@ -168,43 +206,22 @@ private class DrawableRenderer(
             "<rect width=\"108\" height=\"108\" rx=\"$radius\" fill=\"$fill\"/>"
         }
         val gradient = node.children.firstOrNull { it.name == "gradient" }
-        if (gradient != null) {
-            val start = color(gradient.androidAttr("startColor")) ?: return null
-            val end = color(gradient.androidAttr("endColor")) ?: return null
-            val center = color(gradient.androidAttr("centerColor"))
-            val id = "gradient"
+        val body = if (gradient != null) {
+            val start = resolveColor(gradient.androidAttr("startColor"))?.svgColor() ?: return null
+            val end = resolveColor(gradient.androidAttr("endColor"))?.svgColor() ?: return null
+            val center = resolveColor(gradient.androidAttr("centerColor"))?.svgColor()
             val stops = buildString {
                 append("<stop offset=\"0%\" stop-color=\"").append(start).append("\"/>")
                 if (center != null) append("<stop offset=\"50%\" stop-color=\"").append(center).append("\"/>")
                 append("<stop offset=\"100%\" stop-color=\"").append(end).append("\"/>")
             }
-            return "<defs><linearGradient id=\"$id\">$stops</linearGradient></defs>" +
-                filledShape("url(#$id)")
+            "<defs><linearGradient id=\"gradient\">$stops</linearGradient></defs>" + filledShape("url(#gradient)")
+        } else {
+            val solid = node.children.firstOrNull { it.name == "solid" } ?: return null
+            val fill = resolveColor(solid.androidAttr("color"))?.svgColor() ?: return null
+            filledShape(fill)
         }
-        val solid = node.children.firstOrNull { it.name == "solid" } ?: return null
-        val fill = color(solid.androidAttr("color")) ?: return null
-        return filledShape(fill)
-    }
-
-    private fun renderBitmap(node: XmlNode): String? {
-        val source = node.androidAttr("src").ifEmpty { node.androidAttr("drawable") }
-        return resolveLayer(source)?.let(::embed)
-    }
-
-    private fun renderContainer(node: XmlNode): String {
-        val drawable = node.androidAttr("drawable")
-        if (drawable.isNotEmpty()) {
-            color(drawable)?.let { return "<rect width=\"108\" height=\"108\" fill=\"$it\"/>" }
-            resolveLayer(drawable)?.let { return embed(it) }
-        }
-        return node.children.joinToString("") { child ->
-            render(child)?.let { svg -> embed(ApkIconLoader.Result(svg.toByteArray(), "image/svg+xml", "")) }.orEmpty()
-        }
-    }
-
-    private fun embed(layer: ApkIconLoader.Result): String {
-        val encoded = Base64.getEncoder().encodeToString(layer.bytes)
-        return "<image href=\"data:${layer.mimeType};base64,$encoded\" x=\"0\" y=\"0\" width=\"108\" height=\"108\" preserveAspectRatio=\"xMidYMid meet\"/>"
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 108 108\">$body</svg>"
     }
 
     private fun XmlNode.svgTransform(): String {
@@ -223,40 +240,21 @@ private class DrawableRenderer(
             if (pivotX != 0f || pivotY != 0f) add("translate(${-pivotX} ${-pivotY})")
         }.joinToString(" ")
     }
-
-    private fun color(value: String): String? {
-        val raw = when {
-            value.startsWith("#") -> value.removePrefix("#").toLongOrNull(16)?.let { parsed ->
-                when (value.length - 1) {
-                    3 -> ((parsed and 0xf00) shl 12) or ((parsed and 0xf00) shl 8) or
-                        ((parsed and 0x0f0) shl 8) or ((parsed and 0x0f0) shl 4) or
-                        ((parsed and 0x00f) shl 4) or (parsed and 0x00f) or 0xff000000
-                    4 -> ((parsed and 0xf000) shl 16) or ((parsed and 0xf000) shl 12) or
-                        ((parsed and 0x0f00) shl 12) or ((parsed and 0x0f00) shl 8) or
-                        ((parsed and 0x00f0) shl 8) or ((parsed and 0x00f0) shl 4) or
-                        ((parsed and 0x000f) shl 4) or (parsed and 0x000f)
-                    6 -> parsed or 0xff000000
-                    8 -> parsed
-                    else -> null
-                }
-            }
-            value.startsWith("@0x") && !value.startsWith("@0x7f") && !value.startsWith("@0x01") ->
-                value.removePrefix("@0x").toLongOrNull(16)
-            else -> resources.resolveColor(value, locale)?.removePrefix("@0x")?.toLongOrNull(16)
-        } ?: return null
-        val alpha = (raw ushr 24) and 0xff
-        val rgb = (raw and 0xffffff).toString(16).padStart(6, '0')
-        return if (alpha == 0xffL) "#$rgb" else "#$rgb${alpha.toString(16).padStart(2, '0')}"
-    }
-
-    private fun wrapSvg(body: String): String =
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 108 108\">$body</svg>"
-
-    private fun String.typedFloat(): Float? = when {
-        startsWith("@0x") -> removePrefix("@0x").toLongOrNull(16)?.toInt()?.let(Float::fromBits)
-        else -> toFloatOrNull()
-    }?.takeIf { it.isFinite() && kotlin.math.abs(it) < 100_000 }
-
-    private fun String.xmlEscape(): String = replace("&", "&amp;").replace("\"", "&quot;")
-        .replace("<", "&lt;").replace(">", "&gt;")
 }
+
+private fun String.asSvgDrawable(): AppIconDrawable =
+    AppIconDrawable.Encoded(toByteArray(), "image/svg+xml")
+
+private fun Long.svgColor(): String {
+    val alpha = (this ushr 24) and 0xff
+    val rgb = (this and 0xffffff).toString(16).padStart(6, '0')
+    return if (alpha == 0xffL) "#$rgb" else "#$rgb${alpha.toString(16).padStart(2, '0')}"
+}
+
+private fun String.typedFloat(): Float? = when {
+    startsWith("@0x") -> removePrefix("@0x").toLongOrNull(16)?.toInt()?.let(Float::fromBits)
+    else -> toFloatOrNull()
+}?.takeIf { it.isFinite() && kotlin.math.abs(it) < 100_000 }
+
+private fun String.xmlEscape(): String = replace("&", "&amp;").replace("\"", "&quot;")
+    .replace("<", "&lt;").replace(">", "&gt;")
