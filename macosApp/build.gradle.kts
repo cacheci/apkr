@@ -27,14 +27,14 @@ compose.desktop {
             description = "APK basic information viewer"
             vendor = "apkk"
             macOS {
-                iconFile.set(rootProject.file("packaging/icons/icon_droid.icns"))
+                iconFile.set(project.file("src/main/resources/app-icon.icns"))
                 bundleID = "com.cacheci.apk-info-viewer"
             }
             fileAssociation(
                 mimeType = "application/vnd.android.package-archive",
                 extension = "apk",
                 description = "Android application package",
-                macOSIconFile = rootProject.file("packaging/icons/icon_droid.icns"),
+                macOSIconFile = project.file("src/main/resources/app-icon.icns"),
             )
         }
     }

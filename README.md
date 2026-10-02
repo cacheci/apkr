@@ -2,8 +2,6 @@
 
 一个使用 Kotlin Multiplatform 与 Compose Multiplatform 重写的桌面 APK 信息查看器。Windows 和 macOS 是两个独立应用目标，共享 APK 解析、状态模型和 Compose UI。
 
-原 Tauri 2 + TypeScript + Rust 实现完整保留在 `legacy` 分支；`main` 分支仅包含 KMP 桌面实现。
-
 ## 功能
 
 - 选择、拖拽或通过系统文件关联打开 APK
@@ -23,8 +21,9 @@ shared/       KMP 共享模型、国际化、APK 解析和桌面服务
 compose-ui/   Compose Multiplatform 共享桌面界面
 windowsApp/   Windows 独立入口及 MSI/EXE 打包配置
 macosApp/     macOS 独立入口及 DMG/PKG 打包配置
-packaging/    Windows 与 macOS 原生打包资源
 ```
+
+Windows 与 macOS 的安装包图标分别存放在对应应用模块的 `src/main/resources/` 中。
 
 ## 环境要求
 
