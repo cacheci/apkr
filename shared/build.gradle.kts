@@ -9,9 +9,11 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.coroutines.core)
         }
-        desktopMain.dependencies {
-            implementation(libs.batik.codec)
-            implementation(libs.batik.transcoder)
+        named("desktopMain") {
+            dependencies {
+                implementation(libs.batik.codec)
+                implementation(libs.batik.transcoder)
+            }
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
