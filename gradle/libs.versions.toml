@@ -2,9 +2,12 @@
 kotlin = "2.4.20"
 compose = "1.12.1"
 coroutines = "1.10.2"
+batik = "1.19"
 
 [libraries]
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+batik-codec = { module = "org.apache.xmlgraphics:batik-codec", version.ref = "batik" }
+batik-transcoder = { module = "org.apache.xmlgraphics:batik-transcoder", version.ref = "batik" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

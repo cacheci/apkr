@@ -39,7 +39,11 @@ internal class ApkIconLoader(
                 ?: reference.takeIf { it.startsWith("res/") }
             nestedPath?.let { loadPath(it, visited.toMutableSet()) }
         }.render(node)
-        if (svg != null) return Result(svg.toByteArray(), "image/svg+xml", path)
+        if (svg != null) {
+            val svgBytes = svg.toByteArray()
+            SvgRasterizer.toPng(svgBytes)?.let { return Result(it, "image/png", path) }
+            if ("<image " !in svg) return Result(svgBytes, "image/svg+xml", path)
+        }
 
         return node.resourceReferences()
             .asSequence()
