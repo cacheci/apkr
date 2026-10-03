@@ -57,8 +57,8 @@ internal class ApkIconLoader(
 
     private fun decodeNode(node: XmlNode, visited: Set<String>): AppIconDrawable? = when (node.name) {
         "adaptive-icon" -> decodeAdaptive(node, visited)
-        "vector" -> SvgLeafRenderer(::resolveColor).renderVector(node)?.asSvgDrawable()
-        "shape" -> SvgLeafRenderer(::resolveColor).renderShape(node)?.asSvgDrawable()
+        "vector" -> SvgLeafRenderer(::resolveColor, ::resolveXml).renderVector(node)?.asSvgDrawable()
+        "shape" -> SvgLeafRenderer(::resolveColor, ::resolveXml).renderShape(node)?.asSvgDrawable()
         "layer-list" -> decodeLayerList(node, visited)
         "inset" -> decodeInset(node, visited)
         "selector" -> decodeSelector(node, visited)
@@ -143,6 +143,16 @@ internal class ApkIconLoader(
         }
     }
 
+    private fun resolveXml(reference: String): XmlNode? {
+        val path = resources.resolveFile(reference, locale)
+            ?: reference.takeIf { it.startsWith("res/") }
+            ?: return null
+        val entry = entriesByName[path] ?: return null
+        if (!path.endsWith(".xml", ignoreCase = true)) return null
+        val data = zip.getInputStream(entry).use { it.readBytes() }
+        return runCatching { BinaryXmlParser.parse(data) }.getOrNull()
+    }
+
     private fun mimeType(path: String): String? = when (path.substringAfterLast('.', "").lowercase()) {
         "png" -> "image/png"
         "webp" -> "image/webp"
@@ -159,24 +169,29 @@ private fun XmlNode.resourceReferences(): List<String> = buildList {
 
 private class SvgLeafRenderer(
     private val resolveColor: (String) -> Long?,
+    private val resolveXml: (String) -> XmlNode?,
 ) {
     fun renderVector(node: XmlNode): String? {
         val viewportWidth = node.androidAttr("viewportWidth").typedFloat() ?: 24f
         val viewportHeight = node.androidAttr("viewportHeight").typedFloat() ?: viewportWidth
         val width = node.androidAttr("width").typedFloat() ?: viewportWidth
         val height = node.androidAttr("height").typedFloat() ?: viewportHeight
-        val body = node.children.joinToString("") { renderVectorNode(it) }
+        val gradients = mutableListOf<String>()
+        val body = node.children.joinToString("") { renderVectorNode(it, gradients) }
         if (body.isEmpty()) return null
+        val definitions = gradients.takeIf { it.isNotEmpty() }
+            ?.joinToString("", prefix = "<defs>", postfix = "</defs>")
+            .orEmpty()
         return "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$width\" height=\"$height\" " +
-            "viewBox=\"0 0 $viewportWidth $viewportHeight\">$body</svg>"
+            "viewBox=\"0 0 $viewportWidth $viewportHeight\">$definitions$body</svg>"
     }
 
-    private fun renderVectorNode(node: XmlNode): String {
+    private fun renderVectorNode(node: XmlNode, gradients: MutableList<String>): String {
         if (node.name == "path") {
             val data = node.androidAttr("pathData").xmlEscape()
             if (data.isEmpty()) return ""
-            val fill = resolveColor(node.androidAttr("fillColor"))?.svgColor() ?: "none"
-            val stroke = resolveColor(node.androidAttr("strokeColor"))?.svgColor()
+            val fill = resolvePaint(node.androidAttr("fillColor"), gradients) ?: "none"
+            val stroke = resolvePaint(node.androidAttr("strokeColor"), gradients)
             return buildString {
                 append("<path d=\"").append(data).append("\" fill=\"").append(fill).append('"')
                 node.androidAttr("fillAlpha").typedFloat()?.let { append(" fill-opacity=\"").append(it).append('"') }
@@ -190,10 +205,47 @@ private class SvgLeafRenderer(
             }
         }
         if (node.name == "clip-path") return ""
-        val content = node.children.joinToString("") { renderVectorNode(it) }
+        val content = node.children.joinToString("") { renderVectorNode(it, gradients) }
         if (content.isEmpty()) return ""
         val transform = node.svgTransform()
         return if (transform.isEmpty()) content else "<g transform=\"${transform.xmlEscape()}\">$content</g>"
+    }
+
+    private fun resolvePaint(value: String, gradients: MutableList<String>): String? {
+        resolveColor(value)?.let { return it.svgColor() }
+        val gradient = resolveXml(value)?.takeIf { it.name == "gradient" } ?: return null
+        val id = "gradient${gradients.size}"
+        renderLinearGradient(gradient, id)?.let {
+            gradients += it
+            return "url(#$id)"
+        }
+        return null
+    }
+
+    private fun renderLinearGradient(node: XmlNode, id: String): String? {
+        if (node.androidAttr("type") !in setOf("", "0", "linear")) return null
+        val stops = node.childrenNamed("item").mapNotNull { item ->
+            val color = resolveColor(item.androidAttr("color"))?.svgColor() ?: return@mapNotNull null
+            val offset = item.androidAttr("offset").typedFloat() ?: return@mapNotNull null
+            "<stop offset=\"$offset\" stop-color=\"$color\"/>"
+        }.ifEmpty {
+            val start = resolveColor(node.androidAttr("startColor"))?.svgColor() ?: return null
+            val end = resolveColor(node.androidAttr("endColor"))?.svgColor() ?: return null
+            buildList {
+                add("<stop offset=\"0\" stop-color=\"$start\"/>")
+                resolveColor(node.androidAttr("centerColor"))?.svgColor()?.let { center ->
+                    add("<stop offset=\"0.5\" stop-color=\"$center\"/>")
+                }
+                add("<stop offset=\"1\" stop-color=\"$end\"/>")
+            }
+        }
+        val startX = node.androidAttr("startX").typedFloat() ?: 0f
+        val startY = node.androidAttr("startY").typedFloat() ?: 0f
+        val endX = node.androidAttr("endX").typedFloat() ?: 1f
+        val endY = node.androidAttr("endY").typedFloat() ?: 0f
+        return "<linearGradient id=\"$id\" gradientUnits=\"userSpaceOnUse\" " +
+            "x1=\"$startX\" y1=\"$startY\" x2=\"$endX\" y2=\"$endY\">" +
+            stops.joinToString("") + "</linearGradient>"
     }
 
     fun renderShape(node: XmlNode): String? {

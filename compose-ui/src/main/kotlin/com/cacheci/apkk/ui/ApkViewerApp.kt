@@ -1,9 +1,14 @@
 package com.cacheci.apkk.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -11,10 +16,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,20 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,8 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.loadImageBitmap
-import androidx.compose.ui.res.loadSvgPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,15 +50,28 @@ import com.cacheci.apkk.model.ApkInfo
 import com.cacheci.apkk.model.AppIconDrawable
 import com.cacheci.apkk.model.AppLanguage
 import com.cacheci.apkk.model.AppSettings
-import com.cacheci.apkk.model.AppTheme
+import com.cacheci.apkk.model.AppColorTheme
 import com.cacheci.apkk.parser.ApkParser
 import com.cacheci.apkk.platform.AdbInstaller
 import com.cacheci.apkk.platform.DesktopPlatform
 import com.cacheci.apkk.platform.SettingsRepository
+import com.cacheci.apkk.ui.component.ButtonColors
+import com.cacheci.apkk.ui.component.Card
+import com.cacheci.apkk.ui.component.CardColors
+import com.cacheci.apkk.ui.component.EnumSelector
+import com.cacheci.apkk.ui.component.Icon
+import com.cacheci.apkk.ui.component.Text
+import com.cacheci.apkk.ui.component.TextButton
+import com.cacheci.apkk.ui.component.TextButtonDefaults
+import com.cacheci.apkk.ui.theme.AppTheme
+import com.cacheci.apkk.ui.theme.AppTheme.DefaultThemeValues
+import com.cacheci.apkk.ui.theme.ColorSchemeMode
+import com.cacheci.apkk.ui.theme.ThemeController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayInputStream
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import org.jetbrains.compose.resources.decodeToSvgPainter
 
 @Composable
 fun ApkViewerApp(
@@ -79,12 +80,22 @@ fun ApkViewerApp(
     chooseFile: () -> String?,
 ) {
     var settings by remember { mutableStateOf(SettingsRepository.load()) }
-    val systemDark = isSystemInDarkTheme()
-    val dark = settings.theme == AppTheme.DARK || settings.theme == AppTheme.SYSTEM && systemDark
 
-    MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
-        Surface(Modifier.fillMaxSize()) {
-            ViewerContent(platform, externallyOpenedPath, chooseFile, settings) {
+    AppTheme(
+        controller = ThemeController(
+            colorSchemeMode = when (settings.theme) {
+                AppColorTheme.SYSTEM -> ColorSchemeMode.System
+                AppColorTheme.LIGHT -> ColorSchemeMode.Light
+                AppColorTheme.DARK -> ColorSchemeMode.Dark
+            }
+        )
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(AppTheme.colorScheme.background)
+        ) {
+            App(platform, externallyOpenedPath, chooseFile, settings) {
                 settings = it
                 SettingsRepository.save(it)
             }
@@ -93,7 +104,7 @@ fun ApkViewerApp(
 }
 
 @Composable
-private fun ViewerContent(
+private fun App(
     platform: DesktopPlatform,
     externallyOpenedPath: String?,
     chooseFile: () -> String?,
@@ -126,19 +137,25 @@ private fun ViewerContent(
     }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 28.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-            Column(Modifier.weight(1f)) {
-                Text(strings["title"], style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(8.dp))
-                Text(strings["subtitle"], color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 36.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(Modifier.weight(1f).padding(start = 16.dp)) {
+                Text(strings["title"], style = AppTheme.textStyles.h1, fontWeight = FontWeight.Medium)
             }
-            OutlinedButton(
+            TextButton(
+                text = if (installing) strings["installing"] else strings["install"],
                 enabled = info != null && !installing,
                 onClick = {
-                    val apk = info ?: return@OutlinedButton
+                    val apk = info ?: return@TextButton
                     installing = true
                     scope.launch {
                         runCatching {
@@ -148,11 +165,11 @@ private fun ViewerContent(
                         installing = false
                     }
                 },
-            ) { Text(if (installing) strings["installing"] else strings["install"]) }
-            Spacer(Modifier.width(8.dp))
-            OutlinedButton(onClick = { settingsVisible = !settingsVisible }) {
-                Text(if (settingsVisible) strings["back"] else strings["settings"])
-            }
+            )
+            TextButton(
+                text = if (settingsVisible) strings["back"] else strings["settings"],
+                onClick = { settingsVisible = !settingsVisible }
+            )
         }
 
         if (settingsVisible) {
@@ -166,7 +183,7 @@ private fun ViewerContent(
     dialog?.let { (title, message) ->
         AlertDialog(
             onDismissRequest = { dialog = null },
-            confirmButton = { TextButton(onClick = { dialog = null }) { Text("OK") } },
+            confirmButton = { TextButton(text = "OK", onClick = { dialog = null })},
             title = { Text(title) },
             text = { Text(message) },
         )
@@ -177,16 +194,26 @@ private fun ViewerContent(
 @Composable
 private fun DropCard(info: ApkInfo?, parsing: Boolean, strings: Strings, onClick: () -> Unit) {
     Card(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        Modifier.fillMaxWidth(),
     ) {
-        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(DefaultThemeValues.cardInsidePadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            ApkIcon(info)
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    when {
+                    modifier = Modifier.padding( start= 6.dp ),
+                    text = when {
                         parsing -> strings["parsing"]
-                        info != null -> info.fileName
+                        info != null -> info.resolvedAppLabel.ifEmpty { info.fileName }
                         else -> strings["dropHint"]
                     },
                     fontWeight = FontWeight.SemiBold,
@@ -194,20 +221,26 @@ private fun DropCard(info: ApkInfo?, parsing: Boolean, strings: Strings, onClick
                     overflow = TextOverflow.Ellipsis,
                 )
                 if (info != null) {
-                    Spacer(Modifier.height(8.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
                         info.techFeatures.forEach { feature ->
-                            Text(
-                                feature.name,
-                                modifier = Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelMedium,
+                            Card (colors = CardColors(
+                                background = AppTheme.colorScheme.secondContainer,
+                                border = AppTheme.colorScheme.secondBorder,
                             )
+                            ) {
+                                Text(
+                                    feature.name,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    style = AppTheme.textStyles.main,
+                                )
+                            }
                         }
                     }
                 }
             }
-            Spacer(Modifier.width(16.dp))
-            ApkIcon(info)
         }
     }
 }
@@ -219,10 +252,8 @@ private fun ApkIcon(info: ApkInfo?) {
     val fallbackPainter = remember(info?.appIconBytes, info?.appIconMimeType, density) {
         info?.appIconBytes?.let { bytes ->
             runCatching {
-                ByteArrayInputStream(bytes).use { input ->
-                    if (info.appIconMimeType == "image/svg+xml") loadSvgPainter(input, density)
-                    else BitmapPainter(loadImageBitmap(input))
-                }
+                if (info.appIconMimeType == "image/svg+xml") bytes.decodeToSvgPainter(density)
+                else BitmapPainter(bytes.decodeToImageBitmap())
             }.getOrNull()
         }
     }
@@ -230,13 +261,13 @@ private fun ApkIcon(info: ApkInfo?) {
         Modifier
             .size(66.dp)
             .clip(RoundedCornerShape(percent = 22))
-            .background(MaterialTheme.colorScheme.surface),
+            .background(AppTheme.colorScheme.background),
         contentAlignment = Alignment.Center,
     ) {
         when {
             drawable != null -> DrawableIcon(drawable, Modifier.fillMaxSize())
             fallbackPainter != null -> Image(fallbackPainter, null, Modifier.fillMaxSize(), contentScale = ContentScale.Inside)
-            else -> Icon(Icons.Default.Android, null, Modifier.size(42.dp), tint = Color(0xff76b5d2))
+            else -> Icon(Icons.Default.Android, null, Modifier.size(42.dp), tint = AppTheme.colorScheme.primary)
         }
     }
 }
@@ -252,10 +283,8 @@ private fun DrawableIcon(
             val density = LocalDensity.current
             val painter = remember(drawable, density) {
                 runCatching {
-                    ByteArrayInputStream(drawable.bytes).use { input ->
-                        if (drawable.mimeType == "image/svg+xml") loadSvgPainter(input, density)
-                        else BitmapPainter(loadImageBitmap(input))
-                    }
+                    if (drawable.mimeType == "image/svg+xml") drawable.bytes.decodeToSvgPainter(density)
+                    else BitmapPainter(drawable.bytes.decodeToImageBitmap())
                 }.getOrNull()
             }
             if (painter != null) Image(painter, null, modifier, contentScale = contentScale)
@@ -263,7 +292,7 @@ private fun DrawableIcon(
 
         is AppIconDrawable.Solid -> Box(modifier.background(Color(drawable.argb.toInt())))
 
-        is AppIconDrawable.Adaptive -> Box(modifier.clip(RoundedCornerShape(percent = 22))) {
+        is AppIconDrawable.Adaptive -> Box(modifier) {
             drawable.background?.let {
                 DrawableIcon(it, Modifier.fillMaxSize(), ContentScale.FillBounds)
             }
@@ -294,43 +323,126 @@ private const val ANDROID_ICON_VIEWPORT = 108f
 
 @Composable
 private fun InfoGrid(info: ApkInfo, strings: Strings) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            InfoCard(strings["summary"]) { Summary(info, strings) }
-            InfoCard(strings["components"]) {
-                Text(
-                    listOf(
-                        section("Activities", info.activities, strings), section("Services", info.services, strings),
-                        section("Receivers", info.receivers, strings), section("Providers", info.providers, strings),
-                    ).joinToString("\n\n"),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+    var currentCard by remember { mutableStateOf(AppInfoCard.BASIC) }
+    Column (verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
+        Card( modifier = Modifier.fillMaxWidth() ) {
+            Row(
+                modifier = Modifier.padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AppInfoCard.entries.forEach {
+                    val selected = currentCard == it
+                    TextButton(
+                        it.displayName(),
+                        onClick = {
+                            currentCard = it
+                        },
+                        colors = TextButtonDefaults.textButtonColors(
+                            text = if (selected) AppTheme.colorScheme.primaryElement else AppTheme.colorScheme.element,
+                            button = ButtonColors(
+                                background = if (selected) AppTheme.colorScheme.primary else AppTheme.colorScheme.secondContainer,
+                                border = AppTheme.colorScheme.secondBorder
+                            )
+                        )
+                    )
+                }
             }
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            InfoCard(strings["permissions"]) {
-                Text(info.permissions.joinToString("\n").ifEmpty { strings["noPermission"] }, style = MaterialTheme.typography.bodySmall)
-            }
-            InfoCard(strings["files"]) {
-                Text(info.nativeLibs.joinToString("\n").ifEmpty { strings["noNative"] }, style = MaterialTheme.typography.bodySmall)
+        AnimatedContent(
+            targetState = currentCard,
+            transitionSpec = {
+                if (targetState.ordinal > initialState.ordinal) {
+                    (slideInHorizontally { it } + fadeIn()) togetherWith
+                            (slideOutHorizontally { -it } + fadeOut())
+                } else {
+                    (slideInHorizontally { -it } + fadeIn()) togetherWith
+                            (slideOutHorizontally { it } + fadeOut())
+                }
+            },
+            label = "MainPageTransition",
+        ) { card ->
+            Card {
+                when (card) {
+                    AppInfoCard.BASIC ->
+                        Card( Modifier.weight(1f).fillMaxWidth() ) {
+                            Column (
+                                Modifier.padding(
+                                    horizontal = DefaultThemeValues.cardInsidePadding,
+                                    vertical = 8.dp,
+                                )
+                            ) {
+                                AppInfoBasic(info, strings)
+                            }
+                        }
+
+                    AppInfoCard.COMPONENT ->
+                        Card( Modifier.weight(1f).fillMaxWidth() ) {
+                            Column (
+                                Modifier.padding(
+                                    horizontal = DefaultThemeValues.cardInsidePadding,
+                                    vertical = 8.dp,
+                                )
+                            ) {
+                                Text(
+                                    listOf(
+                                        section("Activities", info.activities, strings),
+                                        section("Services", info.services, strings),
+                                        section("Receivers", info.receivers, strings),
+                                        section("Providers", info.providers, strings),
+                                    ).joinToString("\n\n"),
+                                    style = AppTheme.textStyles.ref,
+                                )
+                            }
+                        }
+
+                    AppInfoCard.SIGNATURE ->
+                        Card(Modifier.weight(1f).fillMaxWidth()) {
+                            Column (
+                                Modifier.padding(
+                                    horizontal = DefaultThemeValues.cardInsidePadding,
+                                    vertical = 8.dp,
+                                )
+                            ) {}
+                        }
+
+                    AppInfoCard.PERMISSION ->
+                        Card(Modifier.weight(1f).fillMaxWidth()) {
+                            Column (
+                                Modifier.padding(
+                                    horizontal = DefaultThemeValues.cardInsidePadding,
+                                    vertical = 8.dp,
+                                )
+                            ) {
+                                Text(
+                                    info.permissions.joinToString("\n")
+                                        .ifEmpty { strings["noPermission"] },
+                                    style = AppTheme.textStyles.ref
+                                )
+                            }
+                        }
+
+                    AppInfoCard.LIB ->
+                        Card(Modifier.weight(1f).fillMaxWidth()) {
+                            Column (
+                                Modifier.padding(
+                                    horizontal = DefaultThemeValues.cardInsidePadding,
+                                    vertical = 8.dp,
+                                )
+                            ) {
+                                Text(
+                                    info.nativeLibs.joinToString("\n").ifEmpty { strings["noNative"] },
+                                    style = AppTheme.textStyles.ref
+                                )
+                            }
+                        }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun InfoCard(title: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-        Column(Modifier.padding(18.dp)) {
-            Text(title, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(12.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun Summary(info: ApkInfo, strings: Strings) {
+private fun AppInfoBasic(info: ApkInfo, strings: Strings) {
     val rows = listOf(
         strings["fileName"] to info.fileName, strings["fileSize"] to info.size,
         strings["package"] to info.packageName, strings["appName"] to (info.resolvedAppLabel.ifEmpty { info.appLabel }),
@@ -345,22 +457,32 @@ private fun Summary(info: ApkInfo, strings: Strings) {
     )
     rows.forEach { (name, value) ->
         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-            Text(name, Modifier.width(116.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-            Text(value.ifEmpty { strings["undeclared"] }, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            Text(name, Modifier.width(116.dp), color = AppTheme.colorScheme.element, style = AppTheme.textStyles.summary)
+            Text(value.ifEmpty { strings["undeclared"] }, Modifier.weight(1f), style = AppTheme.textStyles.summary)
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit, strings: Strings) {
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            EnumSelector(strings["language"], settings.language, AppLanguage.entries) {
-                update(settings.copy(language = it))
-            }
-            EnumSelector(strings["theme"], settings.theme, AppTheme.entries) {
-                update(settings.copy(theme = it))
+    Card(
+        Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            EnumSelector(
+                label = strings["language"],
+                selected = settings.language.ordinal,
+                values = AppLanguage.entries.map(Enum<*>::displayName),
+                onValueChange= { index ->
+                    update(settings.copy(language = AppLanguage.entries[index]))
+                }
+            )
+            EnumSelector(
+                strings["theme"],
+                settings.theme.ordinal,
+                AppColorTheme.entries.map(Enum<*>::displayName)
+            ) { index ->
+                update(settings.copy(theme = AppColorTheme.entries[index]))
             }
             OutlinedTextField(
                 value = settings.adbPath,
@@ -374,30 +496,15 @@ private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit, 
     }
 }
 
-@Composable
-private fun <T : Enum<T>> EnumSelector(label: String, value: T, values: List<T>, update: (T) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        OutlinedButton(onClick = { expanded = true }) { Text("$label: ${value.displayName()}") }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            values.forEach { option ->
-                DropdownMenuItem(text = { Text(option.displayName()) }, onClick = {
-                    update(option)
-                    expanded = false
-                })
-            }
-        }
-    }
-}
-
-private fun Enum<*>.displayName(): String = when (this) {
+fun Enum<*>.displayName(): String = when (this) {
     AppLanguage.ZH_CN -> "简体中文"
     AppLanguage.EN_US -> "English"
-    AppTheme.LIGHT -> "Light / 浅色"
-    AppTheme.DARK -> "Dark / 深色"
-    AppTheme.SYSTEM -> "System / 跟随系统"
+    AppColorTheme.LIGHT -> "Light / 浅色"
+    AppColorTheme.DARK -> "Dark / 深色"
+    AppColorTheme.SYSTEM -> "System / 跟随系统"
     else -> name
 }
+
 
 private fun section(title: String, values: List<String>, strings: Strings): String =
     "[$title]\n${values.joinToString("\n").ifEmpty { strings["noComponent"] }}"
@@ -422,3 +529,12 @@ private val androidVersions = mapOf(
     "33" to "Android 13 Tiramisu", "34" to "Android 14 UpsideDownCake",
     "35" to "Android 15 VanillaIceCream", "36" to "Android 16 Baklava", "37" to "Android 17 CinnamonBun",
 )
+
+
+enum class AppInfoCard {
+    BASIC,
+    COMPONENT,
+    SIGNATURE,
+    PERMISSION,
+    LIB,
+}

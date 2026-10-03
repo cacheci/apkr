@@ -2,7 +2,7 @@ package com.cacheci.apkk.platform
 
 import com.cacheci.apkk.model.AppLanguage
 import com.cacheci.apkk.model.AppSettings
-import com.cacheci.apkk.model.AppTheme
+import com.cacheci.apkk.model.AppColorTheme
 import java.io.File
 import java.util.prefs.Preferences
 
@@ -14,8 +14,8 @@ object SettingsRepository {
     fun load(): AppSettings = AppSettings(
         language = runCatching { AppLanguage.valueOf(preferences.get("language", AppLanguage.ZH_CN.name)) }
             .getOrDefault(AppLanguage.ZH_CN),
-        theme = runCatching { AppTheme.valueOf(preferences.get("theme", AppTheme.LIGHT.name)) }
-            .getOrDefault(AppTheme.LIGHT),
+        theme = runCatching { AppColorTheme.valueOf(preferences.get("theme", AppColorTheme.LIGHT.name)) }
+            .getOrDefault(AppColorTheme.LIGHT),
         adbPath = preferences.get("adbPath", ""),
     )
 

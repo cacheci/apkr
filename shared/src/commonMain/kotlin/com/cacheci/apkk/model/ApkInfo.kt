@@ -44,10 +44,10 @@ data class TechFeature(val name: String, val iconKey: String)
 
 enum class AppLanguage { ZH_CN, EN_US }
 
-enum class AppTheme { LIGHT, DARK, SYSTEM }
+enum class AppColorTheme { LIGHT, DARK, SYSTEM }
 
 data class AppSettings(
     val language: AppLanguage = AppLanguage.ZH_CN,
-    val theme: AppTheme = AppTheme.LIGHT,
+    val theme: AppColorTheme = AppColorTheme.LIGHT,
     val adbPath: String = "",
 )
