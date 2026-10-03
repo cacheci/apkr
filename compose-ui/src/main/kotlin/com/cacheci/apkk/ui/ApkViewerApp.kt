@@ -227,7 +227,10 @@ private fun ApkIcon(info: ApkInfo?) {
         }
     }
     Box(
-        Modifier.size(66.dp).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp)),
+        Modifier
+            .size(66.dp)
+            .clip(RoundedCornerShape(percent = 22))
+            .background(MaterialTheme.colorScheme.surface),
         contentAlignment = Alignment.Center,
     ) {
         when {
