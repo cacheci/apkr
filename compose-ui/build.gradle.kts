@@ -17,3 +17,7 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
 }
+
+compose.resources {
+    packageOfResClass = "com.cacheci.apkk.ui.resources"
+}

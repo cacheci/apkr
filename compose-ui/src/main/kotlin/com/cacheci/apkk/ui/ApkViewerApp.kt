@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Android
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,7 +46,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.cacheci.apkk.i18n.Strings
 import com.cacheci.apkk.model.ApkInfo
 import com.cacheci.apkk.model.AppIconDrawable
 import com.cacheci.apkk.model.AppLanguage
@@ -67,37 +67,47 @@ import com.cacheci.apkk.ui.theme.AppTheme
 import com.cacheci.apkk.ui.theme.AppTheme.DefaultThemeValues
 import com.cacheci.apkk.ui.theme.ColorSchemeMode
 import com.cacheci.apkk.ui.theme.ThemeController
+import com.cacheci.apkk.ui.resources.Res
+import com.cacheci.apkk.ui.resources.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.decodeToSvgPainter
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun ApkViewerApp(
     platform: DesktopPlatform,
     externallyOpenedPath: String?,
-    chooseFile: () -> String?,
+    chooseFile: (title: String) -> String?,
 ) {
     var settings by remember { mutableStateOf(SettingsRepository.load()) }
 
-    AppTheme(
-        controller = ThemeController(
-            colorSchemeMode = when (settings.theme) {
-                AppColorTheme.SYSTEM -> ColorSchemeMode.System
-                AppColorTheme.LIGHT -> ColorSchemeMode.Light
-                AppColorTheme.DARK -> ColorSchemeMode.Dark
-            }
-        )
+    CompositionLocalProvider(
+        LocalAppLocale provides when (settings.language) {
+            AppLanguage.ZH_CN -> "zh-CN"
+            AppLanguage.EN_US -> "en-US"
+        }
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(AppTheme.colorScheme.background)
+        AppTheme(
+            controller = ThemeController(
+                colorSchemeMode = when (settings.theme) {
+                    AppColorTheme.SYSTEM -> ColorSchemeMode.System
+                    AppColorTheme.LIGHT -> ColorSchemeMode.Light
+                    AppColorTheme.DARK -> ColorSchemeMode.Dark
+                }
+            )
         ) {
-            App(platform, externallyOpenedPath, chooseFile, settings) {
-                settings = it
-                SettingsRepository.save(it)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(AppTheme.colorScheme.background)
+            ) {
+                App(platform, externallyOpenedPath, chooseFile, settings) {
+                    settings = it
+                    SettingsRepository.save(it)
+                }
             }
         }
     }
@@ -107,11 +117,14 @@ fun ApkViewerApp(
 private fun App(
     platform: DesktopPlatform,
     externallyOpenedPath: String?,
-    chooseFile: () -> String?,
+    chooseFile: (title: String) -> String?,
     settings: AppSettings,
     updateSettings: (AppSettings) -> Unit,
 ) {
-    val strings = remember(settings.language) { Strings(settings.language) }
+    val parseFailedText = stringResource(Res.string.parse_failed)
+    val installSuccessText = stringResource(Res.string.install_success)
+    val installFailedText = stringResource(Res.string.install_failed)
+    val chooseApkText = stringResource(Res.string.choose_apk)
     val scope = rememberCoroutineScope()
     var info by remember { mutableStateOf<ApkInfo?>(null) }
     var parsing by remember { mutableStateOf(false) }
@@ -127,7 +140,7 @@ private fun App(
                     ApkParser.parse(path, if (settings.language == AppLanguage.ZH_CN) "zh-CN" else "en-US")
                 }
             }.onSuccess { info = it }
-                .onFailure { dialog = strings["parseFailed"] to (it.message ?: it.toString()) }
+                .onFailure { dialog = parseFailedText to (it.message ?: it.toString()) }
             parsing = false
         }
     }
@@ -149,10 +162,10 @@ private fun App(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Box(Modifier.weight(1f).padding(start = 16.dp)) {
-                Text(strings["title"], style = AppTheme.textStyles.h1, fontWeight = FontWeight.Medium)
+                Text(stringResource(Res.string.title), style = AppTheme.textStyles.h1, fontWeight = FontWeight.Medium)
             }
             TextButton(
-                text = if (installing) strings["installing"] else strings["install"],
+                text = if (installing) stringResource(Res.string.installing) else stringResource(Res.string.install),
                 enabled = info != null && !installing,
                 onClick = {
                     val apk = info ?: return@TextButton
@@ -160,30 +173,30 @@ private fun App(
                     scope.launch {
                         runCatching {
                             withContext(Dispatchers.IO) { AdbInstaller.install(apk.path, settings.adbPath, platform) }
-                        }.onSuccess { dialog = strings["installSuccess"] to it }
-                            .onFailure { dialog = strings["installFailed"] to (it.message ?: it.toString()) }
+                        }.onSuccess { dialog = installSuccessText to it }
+                            .onFailure { dialog = installFailedText to (it.message ?: it.toString()) }
                         installing = false
                     }
                 },
             )
             TextButton(
-                text = if (settingsVisible) strings["back"] else strings["settings"],
+                text = if (settingsVisible) stringResource(Res.string.back) else stringResource(Res.string.settings),
                 onClick = { settingsVisible = !settingsVisible }
             )
         }
 
         if (settingsVisible) {
-            SettingsPanel(settings, updateSettings, strings)
+            SettingsPanel(settings, updateSettings)
         } else {
-            DropCard(info, parsing, strings) { chooseFile()?.let(::load) }
-            info?.let { InfoGrid(it, strings) }
+            DropCard(info, parsing) { chooseFile(chooseApkText)?.let(::load) }
+            info?.let { InfoGrid(it) }
         }
     }
 
     dialog?.let { (title, message) ->
         AlertDialog(
             onDismissRequest = { dialog = null },
-            confirmButton = { TextButton(text = "OK", onClick = { dialog = null })},
+            confirmButton = { TextButton(text = stringResource(Res.string.confirm), onClick = { dialog = null })},
             title = { Text(title) },
             text = { Text(message) },
         )
@@ -192,7 +205,7 @@ private fun App(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DropCard(info: ApkInfo?, parsing: Boolean, strings: Strings, onClick: () -> Unit) {
+private fun DropCard(info: ApkInfo?, parsing: Boolean, onClick: () -> Unit) {
     Card(
         Modifier.fillMaxWidth(),
     ) {
@@ -213,9 +226,9 @@ private fun DropCard(info: ApkInfo?, parsing: Boolean, strings: Strings, onClick
                     Text(
                         modifier = Modifier.padding(start = 6.dp),
                         text = when {
-                            parsing -> strings["parsing"]
+                            parsing -> stringResource(Res.string.parsing)
                             info != null -> info.resolvedAppLabel.ifEmpty { info.fileName }
-                            else -> strings["dropHint"]
+                            else -> stringResource(Res.string.drop_hint)
                         },
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -331,20 +344,34 @@ private fun DrawableIcon(
 private const val ANDROID_ICON_VIEWPORT = 108f
 
 @Composable
-private fun InfoGrid(info: ApkInfo, strings: Strings) {
+private fun InfoGrid(info: ApkInfo) {
     var currentCard by remember { mutableStateOf(AppInfoCard.BASIC) }
+    val cardTitles = listOf(
+        stringResource(Res.string.tab_basic),
+        stringResource(Res.string.tab_component),
+        stringResource(Res.string.tab_signature),
+        stringResource(Res.string.tab_permission),
+        stringResource(Res.string.tab_lib),
+    )
+    val activitiesTitle = stringResource(Res.string.activities)
+    val servicesTitle = stringResource(Res.string.services)
+    val receiversTitle = stringResource(Res.string.receivers)
+    val providersTitle = stringResource(Res.string.providers)
+    val noComponentText = stringResource(Res.string.no_component)
+    val noPermissionText = stringResource(Res.string.no_permission)
+    val noNativeText = stringResource(Res.string.no_native)
     Column (verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
         Card( modifier = Modifier.fillMaxWidth() ) {
             Row(
                 modifier = Modifier.padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                AppInfoCard.entries.forEach {
-                    val selected = currentCard == it
+                AppInfoCard.entries.zip(cardTitles).forEach { (card, title) ->
+                    val selected = currentCard == card
                     TextButton(
-                        it.displayName(),
+                        title,
                         onClick = {
-                            currentCard = it
+                            currentCard = card
                         },
                         colors = TextButtonDefaults.textButtonColors(
                             text = if (selected) AppTheme.colorScheme.primaryElement else AppTheme.colorScheme.element,
@@ -380,7 +407,7 @@ private fun InfoGrid(info: ApkInfo, strings: Strings) {
                                     vertical = 8.dp,
                                 )
                             ) {
-                                AppInfoBasic(info, strings)
+                                AppInfoBasic(info)
                             }
                         }
 
@@ -394,10 +421,10 @@ private fun InfoGrid(info: ApkInfo, strings: Strings) {
                             ) {
                                 Text(
                                     listOf(
-                                        section("Activities", info.activities, strings),
-                                        section("Services", info.services, strings),
-                                        section("Receivers", info.receivers, strings),
-                                        section("Providers", info.providers, strings),
+                                        section(activitiesTitle, info.activities, noComponentText),
+                                        section(servicesTitle, info.services, noComponentText),
+                                        section(receiversTitle, info.receivers, noComponentText),
+                                        section(providersTitle, info.providers, noComponentText),
                                     ).joinToString("\n\n"),
                                     style = AppTheme.textStyles.ref,
                                 )
@@ -424,7 +451,7 @@ private fun InfoGrid(info: ApkInfo, strings: Strings) {
                             ) {
                                 Text(
                                     info.permissions.joinToString("\n")
-                                        .ifEmpty { strings["noPermission"] },
+                                        .ifEmpty { noPermissionText },
                                     style = AppTheme.textStyles.ref
                                 )
                             }
@@ -439,7 +466,7 @@ private fun InfoGrid(info: ApkInfo, strings: Strings) {
                                 )
                             ) {
                                 Text(
-                                    info.nativeLibs.joinToString("\n").ifEmpty { strings["noNative"] },
+                                    info.nativeLibs.joinToString("\n").ifEmpty { noNativeText },
                                     style = AppTheme.textStyles.ref
                                 )
                             }
@@ -451,53 +478,71 @@ private fun InfoGrid(info: ApkInfo, strings: Strings) {
 }
 
 @Composable
-private fun AppInfoBasic(info: ApkInfo, strings: Strings) {
+private fun AppInfoBasic(info: ApkInfo) {
+    val defaultText = stringResource(Res.string.default_value)
+    val undeclaredText = stringResource(Res.string.undeclared)
+    val debugDefaultText = stringResource(Res.string.debug_default)
+    val noAbiText = stringResource(Res.string.no_abi)
+    val noSignatureText = stringResource(Res.string.no_signature)
     val rows = listOf(
-        strings["fileName"] to info.fileName, strings["fileSize"] to info.size,
-        strings["package"] to info.packageName, strings["appName"] to (info.resolvedAppLabel.ifEmpty { info.appLabel }),
-        strings["versionName"] to info.versionName, strings["versionCode"] to info.versionCode,
-        strings["minSdk"] to sdkLabel(info.minSdk), strings["targetSdk"] to sdkLabel(info.targetSdk),
-        strings["compileSdk"] to sdkLabel(info.compileSdk),
-        strings["languages"] to info.supportedLanguages.joinToString(", ").ifEmpty { strings["default"] },
-        "Debuggable" to info.debuggable.ifEmpty { strings["debugDefault"] },
-        strings["fileCount"] to info.fileCount.toString(),
-        "ABI" to info.abis.joinToString(", ").ifEmpty { strings["noAbi"] },
-        "Signatures" to info.signatures.joinToString(", ").ifEmpty { strings["noSignature"] },
+        stringResource(Res.string.file_name) to info.fileName,
+        stringResource(Res.string.file_size) to info.size,
+        stringResource(Res.string.package_name) to info.packageName,
+        stringResource(Res.string.app_name) to info.resolvedAppLabel.ifEmpty { info.appLabel },
+        stringResource(Res.string.version_name) to info.versionName,
+        stringResource(Res.string.version_code) to info.versionCode,
+        stringResource(Res.string.min_sdk) to sdkLabel(info.minSdk),
+        stringResource(Res.string.target_sdk) to sdkLabel(info.targetSdk),
+        stringResource(Res.string.compile_sdk) to sdkLabel(info.compileSdk),
+        stringResource(Res.string.languages) to info.supportedLanguages.joinToString(", ").ifEmpty { defaultText },
+        stringResource(Res.string.debuggable) to info.debuggable.ifEmpty { debugDefaultText },
+        stringResource(Res.string.file_count) to info.fileCount.toString(),
+        stringResource(Res.string.abi) to info.abis.joinToString(", ").ifEmpty { noAbiText },
+        stringResource(Res.string.signatures) to info.signatures.joinToString(", ").ifEmpty { noSignatureText },
     )
     rows.forEach { (name, value) ->
         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
             Text(name, Modifier.width(116.dp), color = AppTheme.colorScheme.element, style = AppTheme.textStyles.summary)
-            Text(value.ifEmpty { strings["undeclared"] }, Modifier.weight(1f), style = AppTheme.textStyles.summary)
+            Text(value.ifEmpty { undeclaredText }, Modifier.weight(1f), style = AppTheme.textStyles.summary)
         }
     }
 }
 
 @Composable
-private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit, strings: Strings) {
+private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit) {
+    val languages = listOf(
+        stringResource(Res.string.language_zh_cn),
+        stringResource(Res.string.language_en_us),
+    )
+    val themes = listOf(
+        stringResource(Res.string.theme_light),
+        stringResource(Res.string.theme_dark),
+        stringResource(Res.string.theme_system),
+    )
     Card(
         Modifier.fillMaxWidth(),
     ) {
         Column {
             EnumSelector(
-                label = strings["language"],
+                label = stringResource(Res.string.language),
                 selected = settings.language.ordinal,
-                values = AppLanguage.entries.map(Enum<*>::displayName),
+                values = languages,
                 onValueChange= { index ->
                     update(settings.copy(language = AppLanguage.entries[index]))
                 }
             )
             EnumSelector(
-                strings["theme"],
+                stringResource(Res.string.theme),
                 settings.theme.ordinal,
-                AppColorTheme.entries.map(Enum<*>::displayName)
+                themes,
             ) { index ->
                 update(settings.copy(theme = AppColorTheme.entries[index]))
             }
             OutlinedTextField(
                 value = settings.adbPath,
                 onValueChange = { update(settings.copy(adbPath = it)) },
-                label = { Text(strings["adbPath"]) },
-                placeholder = { Text(strings["adbPathHint"]) },
+                label = { Text(stringResource(Res.string.adb_path)) },
+                placeholder = { Text(stringResource(Res.string.adb_path_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
@@ -505,18 +550,8 @@ private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit, 
     }
 }
 
-fun Enum<*>.displayName(): String = when (this) {
-    AppLanguage.ZH_CN -> "简体中文"
-    AppLanguage.EN_US -> "English"
-    AppColorTheme.LIGHT -> "Light / 浅色"
-    AppColorTheme.DARK -> "Dark / 深色"
-    AppColorTheme.SYSTEM -> "System / 跟随系统"
-    else -> name
-}
-
-
-private fun section(title: String, values: List<String>, strings: Strings): String =
-    "[$title]\n${values.joinToString("\n").ifEmpty { strings["noComponent"] }}"
+private fun section(title: String, values: List<String>, emptyText: String): String =
+    "[$title]\n${values.joinToString("\n").ifEmpty { emptyText }}"
 
 private fun sdkLabel(value: String): String {
     val name = androidVersions[value] ?: return value

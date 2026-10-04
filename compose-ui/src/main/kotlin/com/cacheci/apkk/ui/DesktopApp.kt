@@ -50,13 +50,13 @@ object DesktopAppLauncher {
             ApkViewerApp(
                 platform = platform,
                 externallyOpenedPath = externallyOpenedPath,
-                chooseFile = { chooseApk(composeWindow) },
+                chooseFile = { title -> chooseApk(composeWindow, title) },
             )
         }
     }
 
-    private fun chooseApk(owner: ComposeWindow): String? {
-        val dialog = FileDialog(owner, "Choose APK", FileDialog.LOAD).apply {
+    private fun chooseApk(owner: ComposeWindow, title: String): String? {
+        val dialog = FileDialog(owner, title, FileDialog.LOAD).apply {
             filenameFilter = java.io.FilenameFilter { _, name -> isSupportedFile(name) }
             isVisible = true
         }
