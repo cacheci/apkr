@@ -209,17 +209,26 @@ private fun DropCard(info: ApkInfo?, parsing: Boolean, strings: Strings, onClick
                 Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    modifier = Modifier.padding( start= 6.dp ),
-                    text = when {
-                        parsing -> strings["parsing"]
-                        info != null -> info.resolvedAppLabel.ifEmpty { info.fileName }
-                        else -> strings["dropHint"]
-                    },
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row {
+                    Text(
+                        modifier = Modifier.padding(start = 6.dp),
+                        text = when {
+                            parsing -> strings["parsing"]
+                            info != null -> info.resolvedAppLabel.ifEmpty { info.fileName }
+                            else -> strings["dropHint"]
+                        },
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    info?.let {
+                        Text(
+                            modifier = Modifier.padding(start = 12.dp),
+                            text = it.packageName,
+                            color = AppTheme.colorScheme.summary
+                        )
+                    }
+                }
                 if (info != null) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
