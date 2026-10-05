@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -35,10 +36,14 @@ internal fun Button(
             )
             .then(
                 if (borderWidth != null) {
-                    Modifier.border(width = borderWidth, color = colors.border, shape = RoundedCornerShape(DefaultThemeValues.borderRadius) )
+                    Modifier.border(
+                        width = borderWidth,
+                        color = colors.border,
+                        shape = RoundedCornerShape(DefaultThemeValues.borderRadius)
+                    )
                 } else Modifier
-            )
-
+            ),
+        contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = if (enabled) Modifier
@@ -47,7 +52,8 @@ internal fun Button(
                     onLongClick = onLongClick,
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                ) else Modifier
+                ) else Modifier,
+            contentAlignment = Alignment.Center,
         ) {
             content()
         }

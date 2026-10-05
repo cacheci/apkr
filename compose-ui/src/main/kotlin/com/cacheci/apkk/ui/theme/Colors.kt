@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 
 class Colors(
     primary: Color,
+    error: Color,
     element: Color,
     primaryElement: Color,
     disabledElement: Color,
@@ -24,6 +25,8 @@ class Colors(
     thirdBorder: Color,
 ) {
     var primary by mutableStateOf(primary, structuralEqualityPolicy())
+        internal set
+    var error by mutableStateOf(error, structuralEqualityPolicy())
         internal set
     var element by mutableStateOf(element, structuralEqualityPolicy())
         internal set
@@ -53,6 +56,7 @@ class Colors(
 
     fun copy(
         primary: Color = this.primary,
+        error: Color = this.error,
         element: Color = this.element,
         primaryElement: Color = this.primaryElement,
         disabledElement: Color = this.disabledElement,
@@ -66,7 +70,7 @@ class Colors(
         thirdContainer: Color = this.thirdContainer,
         thirdBorder: Color = this.thirdBorder,
     ): Colors = Colors(
-        primary,
+        primary, error,
         element, primaryElement, disabledElement,
         summary, disabledSummary,
         background,
@@ -78,21 +82,22 @@ class Colors(
 
 
 fun lightColorScheme(
-    primary: Color = Color(0xFF004DAF),
+    primary: Color = Color(0xFFA19B79),
+    error: Color = Color(0xFFB30000),
     element: Color = Color(0xFF000000),
     primaryElement:  Color = Color(0xFFFFFFFF),
     disabledElement: Color = Color(0xFF959595),
     summary: Color = Color(0xFF787878),
     disabledSummary: Color = Color(0xFF454545),
-    background: Color = Color(0xFFF3F3F3),
-    firstContainer: Color = Color(0xFFFFFFFF),
+    background: Color = Color(0xFFEBE9D7),
+    firstContainer: Color = Color(0xFFF6F5F1),
     firstBorder: Color = Color(0xFFC1C1C1),
-    secondContainer: Color = Color(0xFFF3F3F3),
+    secondContainer: Color = Color(0xFFF3F3F2),
     secondBorder: Color = Color(0xFFADADAD),
     thirdContainer: Color = Color(0xFFE7E7E7),
     thirdBorder: Color = Color(0xFF717171),
 ): Colors = Colors(
-    primary,
+    primary, error,
     element, primaryElement, disabledElement,
     summary, disabledSummary,
     background,
@@ -103,6 +108,7 @@ fun lightColorScheme(
 
 fun darkColorScheme(
     primary: Color = Color(0xFF7AA9FF),
+    error: Color = Color(0xFFFF5E5E),
     element: Color = Color(0xFFFFFFFF),
     primaryElement:  Color = Color(0xFF000000),
     disabledElement: Color = Color(0xFFBBBBBB),
@@ -116,7 +122,7 @@ fun darkColorScheme(
     thirdContainer: Color = Color(0xFF111111),
     thirdBorder: Color = Color(0xFF252525),
 ): Colors = Colors(
-    primary,
+    primary, error,
     element, primaryElement, disabledElement,
     summary, disabledSummary,
     background,
@@ -128,6 +134,7 @@ fun darkColorScheme(
 @Stable
 internal fun Colors.updateColorsFrom(other:Colors) {
     primary = other.primary
+    error = other.error
     element = other.element
     primaryElement = other.primaryElement
     disabledElement = other.disabledElement

@@ -45,10 +45,10 @@
     <string name="tab_signature">签名</string>
     <string name="tab_permission">权限</string>
     <string name="tab_lib">原生库</string>
-    <string name="activities">Activity</string>
-    <string name="services">Service</string>
-    <string name="receivers">广播接收器</string>
-    <string name="providers">内容提供器</string>
+    <string name="tab_activity">活动</string>
+    <string name="tab_service">服务</string>
+    <string name="tab_provider">内容提供器</string>
+    <string name="tab_receiver">广播接收器</string>
     <string name="confirm">确定</string>
     <string name="choose_apk">选择 APK</string>
 </resources>

@@ -22,7 +22,7 @@ class DefaultThemeValues(
 }
 
 fun actualDefaultThemeValues(
-    borderRadius: Dp = 8.dp,
+    borderRadius: Dp = 2.dp,
     cardInsidePadding: Dp = 16.dp
 ): DefaultThemeValues = DefaultThemeValues(
     borderRadius = borderRadius,

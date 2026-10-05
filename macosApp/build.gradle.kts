@@ -23,7 +23,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Pkg)
             modules("java.prefs")
             packageName = "APK Viewer"
-            packageVersion = "0.2.0"
+            packageVersion = "1.0.0"
             description = "APK basic information viewer"
             vendor = "apkk"
             macOS {

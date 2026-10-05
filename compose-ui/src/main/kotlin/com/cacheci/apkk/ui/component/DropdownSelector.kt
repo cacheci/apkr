@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +40,7 @@ internal fun <T : Enum<T>> EnumSelector(
         selected = selected,
         values = values,
         onValueChange = onValueChange,
+        modifier = Modifier.padding(horizontal = DefaultThemeValues.cardInsidePadding, vertical = 8.dp)
     )
 }
 
@@ -62,8 +64,7 @@ internal fun DropdownSelector(
     Row (
         modifier = modifier
             .fillMaxWidth()
-            .background(colors.background)
-            .padding(horizontal = DefaultThemeValues.cardInsidePadding, vertical = 8.dp),
+            .background(colors.background),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -74,6 +75,7 @@ internal fun DropdownSelector(
                 enabled = enabled,
                 colors = colors.textButton,
                 onClick = { expanded = true },
+                modifier = Modifier.widthIn(min = 150.dp)
             )
             if (visibilityState.currentState || visibilityState.targetState) {
                 Popup(
@@ -106,6 +108,7 @@ internal fun DropdownSelector(
                                         expanded = false
                                     },
                                     colors = colors.textButton,
+                                    modifier = Modifier.widthIn(min = 150.dp)
                                 )
                                 values.forEachIndexed { index, option ->
                                     if (index != selected) {
@@ -116,6 +119,7 @@ internal fun DropdownSelector(
                                                 expanded = false
                                             },
                                             colors = colors.textButton,
+                                            modifier = Modifier.widthIn(min = 100.dp)
                                         )
                                     }
                                 }

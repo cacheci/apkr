@@ -45,10 +45,10 @@
     <string name="tab_signature">Signatures</string>
     <string name="tab_permission">Permissions</string>
     <string name="tab_lib">Native libraries</string>
-    <string name="activities">Activities</string>
-    <string name="services">Services</string>
-    <string name="receivers">Receivers</string>
-    <string name="providers">Providers</string>
+    <string name="tab_activity">Activities</string>
+    <string name="tab_service">Services</string>
+    <string name="tab_provider">Providers</string>
+    <string name="tab_receiver">Receivers</string>
     <string name="confirm">OK</string>
     <string name="choose_apk">Choose APK</string>
 </resources>

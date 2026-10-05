@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cacheci.apkk.ui.theme.AppTheme
@@ -38,6 +39,7 @@ internal fun TextButton(
             color = if (enabled) colors.text else colors.disabledText,
             style = textStyle,
             minLines = 1,
+            textAlign = TextAlign.Center
         )
     }
 }
