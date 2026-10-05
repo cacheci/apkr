@@ -12,20 +12,15 @@ import androidx.compose.ui.unit.dp
 
 @Stable
 class DefaultThemeValues(
-    borderRadius: Dp,
     cardInsidePadding: Dp
 ) {
-    var borderRadius by mutableStateOf(borderRadius, structuralEqualityPolicy())
-        internal set
     var cardInsidePadding by mutableStateOf(cardInsidePadding, structuralEqualityPolicy())
         internal set
 }
 
 fun actualDefaultThemeValues(
-    borderRadius: Dp = 2.dp,
     cardInsidePadding: Dp = 16.dp
 ): DefaultThemeValues = DefaultThemeValues(
-    borderRadius = borderRadius,
     cardInsidePadding = cardInsidePadding,
 )
 

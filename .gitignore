@@ -27,6 +27,7 @@ local.properties
 
 # Optional local Compose resources
 /compose-ui/src/main/composeResources/font/MiSansVF.ttf
+/compose-ui/src/main/composeResources/font/MapleMonoVF.ttf
 
 # OS generated thumbnails
 Thumbs.db

@@ -6,9 +6,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,18 +17,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -47,31 +49,35 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.rememberDialogState
+import androidx.compose.ui.zIndex
 import com.cacheci.apkk.model.ApkInfo
 import com.cacheci.apkk.model.AppIconDrawable
 import com.cacheci.apkk.model.AppLanguage
 import com.cacheci.apkk.model.AppSettings
 import com.cacheci.apkk.model.AppColorTheme
 import com.cacheci.apkk.parser.ApkParser
+import com.cacheci.apkk.platform.AdbDevice
 import com.cacheci.apkk.platform.AdbInstaller
 import com.cacheci.apkk.platform.DesktopPlatform
 import com.cacheci.apkk.platform.SettingsRepository
+import com.cacheci.apkk.ui.component.ButtonColors
 import com.cacheci.apkk.ui.component.ButtonDefaults
 import com.cacheci.apkk.ui.component.Card
-import com.cacheci.apkk.ui.component.CardDefaults
 import com.cacheci.apkk.ui.component.EnumSelector
-import com.cacheci.apkk.ui.component.HorizontalDivider
 import com.cacheci.apkk.ui.component.SelectableText
 import com.cacheci.apkk.ui.component.SimpleTextField
 import com.cacheci.apkk.ui.component.Text
 import com.cacheci.apkk.ui.component.TextButton
 import com.cacheci.apkk.ui.component.TextButtonDefaults
-import com.cacheci.apkk.ui.component.VerticalDivider
-import com.cacheci.apkk.ui.component.foundation.RoundedCornerShape
+import com.cacheci.apkk.ui.component.VisualBox
 import com.cacheci.apkk.ui.theme.AppTheme
 import com.cacheci.apkk.ui.theme.AppTheme.DefaultThemeValues
 import com.cacheci.apkk.ui.theme.ColorSchemeMode
@@ -139,11 +145,16 @@ private fun App(
     val parseFailedText = stringResource(Res.string.parse_failed)
     val installSuccessText = stringResource(Res.string.install_success)
     val installFailedText = stringResource(Res.string.install_failed)
+    val noAvailableDeviceText = stringResource(Res.string.no_available_device)
     val chooseApkText = stringResource(Res.string.choose_apk)
     val scope = rememberCoroutineScope()
     var info by remember { mutableStateOf<ApkInfo?>(null) }
     var parsing by remember { mutableStateOf(false) }
     var installing by remember { mutableStateOf(false) }
+    var loadingDevices by remember { mutableStateOf(false) }
+    var availableDevices by remember { mutableStateOf<List<AdbDevice>>(emptyList()) }
+    var selectedDeviceIndex by remember { mutableStateOf(0) }
+    var deviceSelectionVisible by remember { mutableStateOf(false) }
     var settingsVisible by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<Pair<String, String>?>(null) }
 
@@ -157,6 +168,44 @@ private fun App(
             }.onSuccess { info = it }
                 .onFailure { dialog = parseFailedText to (it.message ?: it.toString()) }
             parsing = false
+        }
+    }
+
+    fun loadDevices() {
+        loadingDevices = true
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { AdbInstaller.listDevices(settings.adbPath, platform) }
+                    .filter { it.state == "device" }
+            }.onSuccess { devices ->
+                if (devices.isEmpty()) {
+                    deviceSelectionVisible = false
+                    dialog = installFailedText to noAvailableDeviceText
+                } else {
+                    availableDevices = devices
+                    selectedDeviceIndex = 0
+                    deviceSelectionVisible = true
+                }
+            }.onFailure {
+                deviceSelectionVisible = false
+                dialog = installFailedText to (it.message ?: it.toString())
+            }
+            loadingDevices = false
+        }
+    }
+
+    fun install(device: AdbDevice) {
+        val apk = info ?: return
+        deviceSelectionVisible = false
+        installing = true
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    AdbInstaller.install(apk.path, settings.adbPath, platform, device.serial)
+                }
+            }.onSuccess { dialog = installSuccessText to it }
+                .onFailure { dialog = installFailedText to (it.message ?: it.toString()) }
+            installing = false
         }
     }
 
@@ -198,29 +247,20 @@ private fun App(
                 Text(stringResource(Res.string.title), style = AppTheme.textStyles.h1, fontWeight = FontWeight.Medium)
             }
             TextButton(
-                text = if (installing) stringResource(Res.string.installing) else stringResource(Res.string.install),
-                enabled = info != null && !installing,
-                borderWidth = 1.dp,
-                onClick = {
-                    val apk = info ?: return@TextButton
-                    installing = true
-                    scope.launch {
-                        runCatching {
-                            withContext(Dispatchers.IO) { AdbInstaller.install(apk.path, settings.adbPath, platform) }
-                        }.onSuccess { dialog = installSuccessText to it }
-                            .onFailure { dialog = installFailedText to (it.message ?: it.toString()) }
-                        installing = false
-                    }
+                text = when {
+                    installing -> stringResource(Res.string.installing)
+                    else -> stringResource(Res.string.install)
                 },
+                enabled = info != null && !installing && !loadingDevices,
+                onClick = ::loadDevices,
             )
             TextButton(
                 text = if (settingsVisible) stringResource(Res.string.back) else stringResource(Res.string.settings),
-                borderWidth = 1.dp,
                 onClick = { settingsVisible = !settingsVisible }
             )
         }
 
-        Card (borderWidth = 1.dp) {
+        Card {
             Column {
                 DropGrid(
                     info = info,
@@ -229,10 +269,7 @@ private fun App(
                 )
 
                 when {
-                    settingsVisible -> Column {
-                        HorizontalDivider(thickness = 1.dp)
-                        SettingsPanel(settings, updateSettings)
-                    }
+                    settingsVisible -> SettingsPanel(settings, updateSettings)
                     info != null -> InfoGrid(info!!)
                 }
             }
@@ -240,12 +277,108 @@ private fun App(
     }
 
     dialog?.let { (title, message) ->
-        AlertDialog(
-            onDismissRequest = { dialog = null },
-            confirmButton = { TextButton(text = stringResource(Res.string.confirm), onClick = { dialog = null })},
-            title = { Text(title) },
-            text = { Text(message) },
+        DialogWindow(
+            onCloseRequest = { dialog = null },
+            title = title,
+            state = rememberDialogState(
+                width = 200.dp,
+                height = 160.dp,
+                position = WindowPosition(Alignment.Center),
+            ),
+            resizable = false,
+        ) {
+            Column (
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(message)
+                TextButton(text = stringResource(Res.string.confirm), onClick = { dialog = null })
+            }
+        }
+    }
+
+    if (deviceSelectionVisible && availableDevices.isNotEmpty()) {
+        val dialogWindowSizeState = rememberDialogState(
+            width = 440.dp,
+            height = 260.dp,
+            position = WindowPosition(Alignment.Center),
         )
+
+        LaunchedEffect(dialogWindowSizeState.size) {
+            val size = dialogWindowSizeState.size
+
+            val width = maxOf(size.width, 440.dp)
+            val height = maxOf(size.height, 260.dp)
+
+            if (size.width != width || size.height != height) {
+                dialogWindowSizeState.size = DpSize(width, height)
+            }
+        }
+
+        com.cacheci.apkk.ui.component.DialogWindow(
+            onCloseRequest = {
+                deviceSelectionVisible = false
+            },
+            title = stringResource(Res.string.select_device),
+            state = dialogWindowSizeState,
+            minSize = DpSize(220.dp,140.dp),
+            resizable = true,
+        ) {
+            Box (modifier = Modifier.fillMaxSize().background(AppTheme.colorScheme.firstContainer)) {
+                Column(
+                    modifier = Modifier
+                        .padding(DefaultThemeValues.cardInsidePadding),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    VisualBox {
+                        Column(
+                            modifier = Modifier
+                                .background(
+                                    color = AppTheme.colorScheme.secondContainer,
+                                ),
+                        ) {
+                            availableDevices.forEach {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(
+                                            onClick = { install(it) }
+                                        )
+                                        .padding(DefaultThemeValues.cardInsidePadding),
+                                ) {
+                                    if (!it.model.isNullOrEmpty()) {
+                                        Text(it.model!!)
+                                        Text(
+                                            it.serial,
+                                            color = AppTheme.colorScheme.summary,
+                                            style = AppTheme.textStyles.summary
+                                        )
+                                    } else {
+                                        Text(it.serial)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Row (
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            text = stringResource(Res.string.cancel),
+                            onClick = { deviceSelectionVisible = false },
+                        )
+                        TextButton(
+                            text = stringResource(Res.string.refresh_devices),
+                            enabled = !loadingDevices,
+                            onClick = ::loadDevices,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -256,14 +389,22 @@ private fun DropGrid(
     parsing: Boolean,
     onClick: () -> Unit,
 ) {
-    Box(
-        Modifier
-            .fillMaxWidth(),
+    val interactionSource = remember {
+        MutableInteractionSource()
+    }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    VisualBox(
+        modifier = Modifier.fillMaxWidth(),
+        visualFeedback = isPressed,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .clickable(
+                    onClick = onClick,
+                    interactionSource = interactionSource,
+                )
                 .padding(DefaultThemeValues.cardInsidePadding),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -302,7 +443,6 @@ private fun DropGrid(
                             TextButton (
                                 text = feature.name,
                                 textStyle = AppTheme.textStyles.main,
-                                borderWidth = 1.dp,
                                 colors = TextButtonDefaults.textButtonColors(
                                     button = ButtonDefaults.buttonColors(
                                         background = AppTheme.colorScheme.secondContainer,
@@ -400,74 +540,64 @@ private const val ANDROID_ICON_VIEWPORT = 108f
 private fun InfoGrid(info: ApkInfo) {
     var currentCard by remember { mutableStateOf(0) }
 
-    Column (verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card (
-            Modifier.border(
-                width = 1.dp,
-                color = AppTheme.colorScheme.secondBorder,
-                shape = RoundedCornerShape(DefaultThemeValues.borderRadius)
-            )
-        ) {
-            Column (modifier = Modifier.heightIn(min = 240.dp)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(IntrinsicSize.Min)
-                        .background(
-                            AppTheme.colorScheme.secondContainer,
-                            shape = RoundedCornerShape(top = DefaultThemeValues.borderRadius)
-                        )
-                        .border(
-                            width = 1.dp, color = AppTheme.colorScheme.secondBorder,
-                            shape = RoundedCornerShape(top = DefaultThemeValues.borderRadius)
-                        )
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    VerticalDivider(
-                        color = if (currentCard != 0) AppTheme.colorScheme.secondBorder else Color.Transparent,
+    VisualBox {
+        Column (modifier = Modifier.heightIn(min = 240.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+                    .background(
+                        AppTheme.colorScheme.secondContainer,
                     )
-                    AppInfoCard.entries.forEachIndexed { index, card ->
-                        val selected = currentCard == index
-                        Row (
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape( top = DefaultThemeValues.borderRadius ))
-                                .clickable(
-                                    onClick = {
-                                        currentCard = index
-                                    }
-                                ).background(
-                                    if (selected) AppTheme.colorScheme.primary else Color.Transparent,
-                                )
-                        ) {
-                            Text(
-                                text = card.localizedTitle(),
-                                color = if (selected) AppTheme.colorScheme.primaryElement else AppTheme.colorScheme.element,
-                                modifier = Modifier.padding(8.dp)
-                            )
-
-                            VerticalDivider(
-                                modifier = if (index + 1 != AppInfoCard.entries.count()) Modifier.height(14.dp) else Modifier,
-                                color = if (!selected && currentCard != index + 1) AppTheme.colorScheme.secondBorder else Color.Transparent
-                            )
-                        }
+                    .padding(horizontal = 8.dp)
+                    .offset(y = 2.dp)
+                    .zIndex(1f),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                AppInfoCard.entries.forEachIndexed { index, card ->
+                    val selected = currentCard == index
+                    val interactionSource = remember {
+                        MutableInteractionSource()
+                    }
+                    val isPressed by interactionSource.collectIsPressedAsState()
+                    VisualBox (
+                        modifier = Modifier
+                            .clickable(
+                                onClick = {
+                                    currentCard = index
+                                },
+                                interactionSource = interactionSource
+                            ).background(
+                                if (selected) AppTheme.colorScheme.primary else Color.Transparent,
+                            ),
+                        effectiveWidth = PaddingValues(
+                            top = 2.dp, start = 2.dp, end = 2.dp,
+                            bottom = if (selected) 0.dp else 2.dp
+                        ),
+                        visualFeedback = isPressed
+                    ) {
+                        Text(
+                            text = card.localizedTitle(),
+                            modifier = Modifier.padding(8.dp)
+                        )
                     }
                 }
-                AnimatedContent(
-                    modifier = Modifier.fillMaxWidth(),
-                    targetState = currentCard,
-                    transitionSpec = {
-                        if (targetState > initialState) {
-                            (slideInHorizontally { it }) togetherWith
-                                    (slideOutHorizontally { -it })
-                        } else {
-                            (slideInHorizontally { -it }) togetherWith
-                                    (slideOutHorizontally { it })
-                        }
-                    },
-                    label = "MainPageTransition",
-                ) { card ->
+            }
+            AnimatedContent(
+                modifier = Modifier.fillMaxWidth(),
+                targetState = currentCard,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        (slideInHorizontally { it }) togetherWith
+                                (slideOutHorizontally { -it })
+                    } else {
+                        (slideInHorizontally { -it }) togetherWith
+                                (slideOutHorizontally { it })
+                    }
+                },
+                label = "MainPageTransition",
+            ) { card ->
+                VisualBox (visualFeedback = true) {
                     when (AppInfoCard.entries[card]) {
                         AppInfoCard.BASIC ->
                             Column(
@@ -514,7 +644,7 @@ private fun InfoGrid(info: ApkInfo) {
                                             value.ifEmpty { undeclaredText },
                                             Modifier.weight(1f),
                                             style = AppTheme.textStyles.summary,
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = AppTheme.monospaceFontFamily,
                                         )
                                     }
                                 }
@@ -540,7 +670,7 @@ private fun InfoGrid(info: ApkInfo) {
                                     info.permissions.joinToString("\n")
                                         .ifEmpty { stringResource(Res.string.no_permission) },
                                     style = AppTheme.textStyles.ref,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = AppTheme.monospaceFontFamily,
                                 )
                             }
 
@@ -565,8 +695,7 @@ private fun InfoGrid(info: ApkInfo) {
                             if (x86Lib.isNotEmpty()) libArch += x86Lib to "x86"
 
                             if (libArch.any { it.first.isNotEmpty() }) {
-                                Card {
-                                    Column( modifier = Modifier.heightIn(min = 240.dp) ) {
+                                    Column(modifier = Modifier.heightIn(min = 240.dp).padding(4.dp)) {
                                         var currentArch by remember { mutableStateOf(0) }
 
                                         Row(
@@ -574,74 +703,79 @@ private fun InfoGrid(info: ApkInfo) {
                                                 .height(IntrinsicSize.Min)
                                                 .background(
                                                     color = AppTheme.colorScheme.secondContainer,
-                                                    shape = RoundedCornerShape(top = DefaultThemeValues.borderRadius)
                                                 )
-                                                .padding(horizontal = 12.dp),
+                                                .padding(horizontal = 12.dp)
+                                                .offset(y = 2.dp)
+                                                .zIndex(1f),
                                         ) {
-                                            VerticalDivider(
-                                                color = if (currentArch != 0) AppTheme.colorScheme.secondBorder else Color.Transparent,
-                                            )
                                             libArch.forEachIndexed { index, arch ->
                                                 val selected = currentArch == index
-                                                Row (
-                                                    modifier = Modifier
-                                                        .height(IntrinsicSize.Min)
-                                                        .background(
-                                                            color = if (selected) AppTheme.colorScheme.primary else Color.Transparent,
-                                                            shape = RoundedCornerShape( top = DefaultThemeValues.borderRadius ),
-                                                        )
-                                                        .clip(RoundedCornerShape( top = DefaultThemeValues.borderRadius ))
-                                                        .clickable(onClick = {
-                                                            currentArch = libArch.indexOf(arch)
-                                                        }),
-                                                    verticalAlignment = Alignment.CenterVertically,
+                                                val interactionSource = remember {
+                                                    MutableInteractionSource()
+                                                }
+                                                val isPressed by interactionSource.collectIsPressedAsState()
+
+                                                VisualBox (
+                                                    visualFeedback = isPressed,
+                                                    effectiveWidth = PaddingValues(
+                                                        start = 2.dp, end = 2.dp, top = 2.dp,
+                                                        bottom = if (selected) 0.dp else 2.dp
+                                                    )
                                                 ) {
-                                                    Text(
-                                                        text = arch.second,
-                                                        color = if (selected) AppTheme.colorScheme.primaryElement else AppTheme.colorScheme.element,
+                                                    Row(
                                                         modifier = Modifier
-                                                            .padding(8.dp)
-                                                    )
-                                                    VerticalDivider(
-                                                        modifier = if (index + 1 != libArch.count()) Modifier.height(14.dp) else Modifier,
-                                                        color = if (!selected && currentArch != index + 1) AppTheme.colorScheme.secondBorder else Color.Transparent
-                                                    )
+                                                            .height(IntrinsicSize.Min)
+                                                            .clickable(
+                                                                onClick = {
+                                                                    currentArch = libArch.indexOf(arch)
+                                                                },
+                                                                interactionSource = interactionSource,
+                                                            ),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                    ) {
+                                                        Text(
+                                                            text = arch.second,
+                                                            color = AppTheme.colorScheme.element,
+                                                            modifier = Modifier
+                                                                .padding(8.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
-
-                                        HorizontalDivider(color = AppTheme.colorScheme.thirdBorder)
-
-                                        AnimatedContent(
-                                            modifier = Modifier
-                                                .heightIn(min = 30.dp)
-                                                .fillMaxWidth(),
-                                            targetState = currentArch,
-                                            transitionSpec = {
-                                                if (targetState > initialState) {
-                                                    (slideInHorizontally { it }) togetherWith
-                                                            (slideOutHorizontally { -it })
-                                                } else {
-                                                    (slideInHorizontally { -it }) togetherWith
-                                                            (slideOutHorizontally { it })
-                                                }
-                                            },
-                                        ) { index ->
-                                            SelectableText(
-                                                text = libArch[index].first.joinToString("\n"),
-                                                modifier = Modifier.padding(
-                                                    horizontal = DefaultThemeValues.cardInsidePadding,
-                                                ),
-                                                style = AppTheme.textStyles.ref,
-                                                fontFamily = FontFamily.Monospace,
-                                            )
+                                        VisualBox (visualFeedback = true) {
+                                            AnimatedContent(
+                                                modifier = Modifier
+                                                    .heightIn(min = 30.dp)
+                                                    .fillMaxWidth(),
+                                                targetState = currentArch,
+                                                transitionSpec = {
+                                                    if (targetState > initialState) {
+                                                        (slideInHorizontally { it }) togetherWith
+                                                                (slideOutHorizontally { -it })
+                                                    } else {
+                                                        (slideInHorizontally { -it }) togetherWith
+                                                                (slideOutHorizontally { it })
+                                                    }
+                                                },
+                                            ) { index ->
+                                                SelectableText(
+                                                    text = libArch[index].first.joinToString("\n"),
+                                                    modifier = Modifier.padding(
+                                                        horizontal = DefaultThemeValues.cardInsidePadding,
+                                                    ),
+                                                    style = AppTheme.textStyles.ref,
+                                                    fontFamily = AppTheme.monospaceFontFamily,
+                                                )
+                                            }
                                         }
                                     }
-                                }
+
                             } else {
                                 Text(
                                     text = stringResource(Res.string.no_native),
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
                                     style = AppTheme.textStyles.ref
                                 )
                             }
@@ -662,7 +796,7 @@ private fun InfoGrid(info: ApkInfo) {
                                         text = it,
                                         color = AppTheme.colorScheme.element,
                                         style = AppTheme.textStyles.summary,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = AppTheme.monospaceFontFamily,
                                     )
                                 }
                             }
@@ -682,7 +816,7 @@ private fun InfoGrid(info: ApkInfo) {
                                         text = it,
                                         color = AppTheme.colorScheme.element,
                                         style = AppTheme.textStyles.summary,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = AppTheme.monospaceFontFamily,
                                     )
                                 }
                             }
@@ -702,7 +836,7 @@ private fun InfoGrid(info: ApkInfo) {
                                         text = it,
                                         color = AppTheme.colorScheme.element,
                                         style = AppTheme.textStyles.summary,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = AppTheme.monospaceFontFamily,
                                     )
                                 }
                             }
@@ -722,7 +856,7 @@ private fun InfoGrid(info: ApkInfo) {
                                         text = it,
                                         color = AppTheme.colorScheme.element,
                                         style = AppTheme.textStyles.summary,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = AppTheme.monospaceFontFamily,
                                     )
                                 }
                             }
@@ -744,8 +878,8 @@ private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit) 
         stringResource(Res.string.theme_dark),
         stringResource(Res.string.theme_system),
     )
-    Card(
-        Modifier.fillMaxWidth(),
+    VisualBox(
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
             EnumSelector(
@@ -768,6 +902,7 @@ private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit) 
                 onValueChange = { update(settings.copy(adbPath = it)) },
                 label = stringResource(Res.string.adb_path),
                 placeholder = stringResource(Res.string.adb_path_hint),
+                inBoxAlignment = Alignment.Center,
                 singleLine = true,
             )
         }

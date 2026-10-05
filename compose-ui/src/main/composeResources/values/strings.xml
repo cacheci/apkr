@@ -6,6 +6,12 @@
     <string name="installing">安装中</string>
     <string name="install_success">安装完成</string>
     <string name="install_failed">安装失败</string>
+    <string name="select_device">选择安装设备</string>
+    <string name="device">设备</string>
+    <string name="loading_devices">正在获取设备</string>
+    <string name="refresh_devices">刷新设备</string>
+    <string name="no_available_device">未找到可用设备，请检查设备连接和 USB 调试授权</string>
+    <string name="cancel">取消</string>
     <string name="drop_hint">拖拽 APK 到这里或点击选择文件</string>
     <string name="parsing">解析中</string>
     <string name="parse_failed">解析失败</string>

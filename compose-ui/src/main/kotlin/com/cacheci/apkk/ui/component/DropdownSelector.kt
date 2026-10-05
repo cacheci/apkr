@@ -94,34 +94,29 @@ internal fun DropdownSelector(
                             shrinkTowards = Alignment.Top
                         ),
                     ) {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                background = colors.textButton.button.background,
-                                border = colors.textButton.button.border,
-                            ),
-                            borderWidth = 1.dp,
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.widthIn(min = 150.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                TextButton(
-                                    text = values[selected],
-                                    onClick = {
-                                        expanded = false
-                                    },
-                                    colors = colors.textButton,
-                                    modifier = Modifier.widthIn(min = 150.dp)
-                                )
-                                values.forEachIndexed { index, option ->
-                                    if (index != selected) {
-                                        TextButton(
-                                            text = option,
-                                            onClick = {
-                                                onValueChange(index)
-                                                expanded = false
-                                            },
-                                            colors = colors.textButton,
-                                            modifier = Modifier.widthIn(min = 100.dp)
-                                        )
-                                    }
+                            TextButton(
+                                text = values[selected],
+                                onClick = {
+                                    expanded = false
+                                },
+                                colors = colors.textButton,
+                                modifier = Modifier.widthIn(min = 150.dp)
+                            )
+                            values.forEachIndexed { index, option ->
+                                if (index != selected) {
+                                    TextButton(
+                                        text = option,
+                                        onClick = {
+                                            onValueChange(index)
+                                            expanded = false
+                                        },
+                                        colors = colors.textButton,
+                                        modifier = Modifier.widthIn(min = 150.dp)
+                                    )
                                 }
                             }
                         }

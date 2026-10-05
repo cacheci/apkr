@@ -9,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.cacheci.apkk.ui.theme.AppTheme
 
@@ -22,14 +21,12 @@ internal fun TextButton(
     enabled: Boolean = true,
     colors: TextButtonColors = TextButtonDefaults.textButtonColors(),
     textStyle: TextStyle = AppTheme.textStyles.main,
-    borderWidth: Dp? = null,
     onLongClick: () -> Unit = {},
 ) {
     Button(
         modifier = modifier,
         enabled = enabled,
         colors = colors.button,
-        borderWidth = borderWidth,
         onClick = onClick,
         onLongClick = onLongClick,
     ) {

@@ -1,21 +1,18 @@
 package com.cacheci.apkk.ui.component
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.Dp
 import com.cacheci.apkk.ui.theme.AppTheme
-import com.cacheci.apkk.ui.theme.AppTheme.DefaultThemeValues
 
 @Composable
 internal fun Button(
@@ -24,38 +21,33 @@ internal fun Button(
     enabled: Boolean = true,
     onLongClick: () -> Unit = {},
     colors: ButtonColors = ButtonDefaults.buttonColors(),
-    borderWidth: Dp? = null,
     content: @Composable () -> Unit = {},
 ) {
-    Box(
-        modifier = modifier
-            .clip(shape = RoundedCornerShape(DefaultThemeValues.borderRadius))
-            .background(
-                color = colors.background,
-                shape = RoundedCornerShape(DefaultThemeValues.borderRadius)
-            )
-            .then(
-                if (borderWidth != null) {
-                    Modifier.border(
-                        width = borderWidth,
-                        color = colors.border,
-                        shape = RoundedCornerShape(DefaultThemeValues.borderRadius)
-                    )
-                } else Modifier
-            ),
-        contentAlignment = Alignment.Center,
+    val interactionSource = remember {
+        MutableInteractionSource()
+    }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    VisualBox (
+        visualFeedback = isPressed
     ) {
         Box(
-            modifier = if (enabled) Modifier
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) else Modifier,
+            modifier = modifier
+                .background(color = colors.background),
             contentAlignment = Alignment.Center,
         ) {
-            content()
+            Box(
+                modifier = if (enabled) Modifier
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                        interactionSource = interactionSource,
+                        indication = null,
+                    ) else Modifier,
+                contentAlignment = Alignment.Center,
+            ) {
+                content()
+            }
         }
     }
 }

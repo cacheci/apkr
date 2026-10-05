@@ -8,6 +8,12 @@ import java.util.prefs.Preferences
 
 enum class DesktopPlatform { WINDOWS, MACOS }
 
+data class AdbDevice(
+    val serial: String,
+    val state: String,
+    val model: String?,
+)
+
 object SettingsRepository {
     private val preferences = Preferences.userRoot().node("com/cacheci/apkk")
 
@@ -27,10 +33,37 @@ object SettingsRepository {
 }
 
 object AdbInstaller {
-    fun install(apkPath: String, configuredPath: String, platform: DesktopPlatform): String {
+    fun listDevices(configuredPath: String, platform: DesktopPlatform): List<AdbDevice> {
+        val adb = resolveAdb(configuredPath, platform)
+        val process = ProcessBuilder(adb.absolutePath, "devices", "-l")
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+        val code = process.waitFor()
+        check(code == 0) { output.ifEmpty { "adb devices 失败：退出码 $code" } }
+        return output.lineSequence()
+            .map(String::trim)
+            .filter { it.isNotEmpty() && !it.startsWith("List of devices") && !it.startsWith("*") }
+            .mapNotNull { line ->
+                val parts = line.split(Regex("\\s+"))
+                if (parts.size < 2) return@mapNotNull null
+                val properties = parts.drop(2).mapNotNull { property ->
+                    val separator = property.indexOf(':')
+                    if (separator <= 0) null else property.substring(0, separator) to property.substring(separator + 1)
+                }.toMap()
+                AdbDevice(
+                    serial = parts[0],
+                    state = parts[1],
+                    model = properties["model"]?.replace('_', ' '),
+                )
+            }
+            .toList()
+    }
+
+    fun install(apkPath: String, configuredPath: String, platform: DesktopPlatform, deviceSerial: String): String {
         require(File(apkPath).isFile) { "APK 文件不存在" }
         val adb = resolveAdb(configuredPath, platform)
-        val process = ProcessBuilder(adb.absolutePath, "install", "-r", apkPath)
+        val process = ProcessBuilder(adb.absolutePath, "-s", deviceSerial, "install", "-r", apkPath)
             .redirectErrorStream(true)
             .start()
         val output = process.inputStream.bufferedReader().use { it.readText() }.trim()

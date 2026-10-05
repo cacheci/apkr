@@ -6,6 +6,12 @@
     <string name="installing">Installing</string>
     <string name="install_success">Installed</string>
     <string name="install_failed">Install failed</string>
+    <string name="select_device">Select installation device</string>
+    <string name="device">Device</string>
+    <string name="loading_devices">Loading devices</string>
+    <string name="refresh_devices">Refresh devices</string>
+    <string name="no_available_device">No available device. Check the connection and USB debugging authorization.</string>
+    <string name="cancel">Cancel</string>
     <string name="drop_hint">Drop APK here or click to choose</string>
     <string name="parsing">Parsing</string>
     <string name="parse_failed">Parse failed</string>
