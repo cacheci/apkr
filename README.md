@@ -1,5 +1,6 @@
 # APK 基础信息查看器（Kotlin Multiplatform）
 
+⚠️：纯粹的 VibeCoding 产物，仅供娱乐⚠️
 一个使用 Kotlin Multiplatform 与 Compose Multiplatform 重写的桌面 APK 信息查看器。Windows 和 macOS 是两个独立应用目标，共享 APK 解析、状态模型和 Compose UI。
 
 ## 功能
@@ -17,7 +18,7 @@
 ## 工程结构
 
 ```text
-shared/       KMP 共享模型、国际化、APK 解析和桌面服务
+shared/       KMP 共享模型、本地化、APK 解析和桌面服务
 compose-ui/   Compose Multiplatform 共享桌面界面
 windowsApp/   Windows 独立入口及 MSI/EXE 打包配置
 macosApp/     macOS 独立入口及 DMG/PKG 打包配置
