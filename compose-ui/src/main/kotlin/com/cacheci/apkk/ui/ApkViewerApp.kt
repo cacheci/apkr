@@ -541,7 +541,7 @@ private fun InfoGrid(info: ApkInfo) {
 
     VisualBox {
         Column (modifier = Modifier.heightIn(min = 240.dp)) {
-            Row(
+            FlowRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(IntrinsicSize.Min)
@@ -551,7 +551,8 @@ private fun InfoGrid(info: ApkInfo) {
                     .padding(horizontal = 8.dp)
                     .offset(y = 2.dp)
                     .zIndex(1f),
-                verticalAlignment = Alignment.Bottom,
+                verticalArrangement = Arrangement.Bottom,
+                itemVerticalAlignment = Alignment.Bottom,
             ) {
                 AppInfoCard.entries.forEachIndexed { index, card ->
                     val selected = currentCard == index
@@ -710,17 +711,14 @@ private fun InfoGrid(info: ApkInfo) {
                                                 )
                                             ) {
                                                 DetailRow(
-                                                    "verification",
-                                                    if (currentSig.verificationSuccessful == true) "SUCCESS" else "FAILED",
+                                                    stringResource(Res.string.signature_verification),
+                                                    if (currentSig.verificationSuccessful == true) {
+                                                        stringResource(Res.string.signature_verification_success)
+                                                    } else {
+                                                        stringResource(Res.string.signature_verification_failed)
+                                                    },
                                                     detailColor = if (currentSig.verificationSuccessful == true) AppTheme.colorScheme.success else AppTheme.colorScheme.error
-                                                ) //TODO: i18n
-
-                                                currentSig.signatureAlgorithmId?.let {
-                                                    DetailRow(
-                                                        "Algorithm",
-                                                        "0x" + it.toString(16) + if (currentSig.algorithm != null) " (${currentSig.algorithm})" else ""
-                                                    ) //TODO: i18n
-                                                }
+                                                )
 
                                                 currentSig.signatureAlgorithmId?.let {
                                                     var detail = "0x${it.toString(16)}"
@@ -728,37 +726,37 @@ private fun InfoGrid(info: ApkInfo) {
                                                         detail += " (${currentSig.algorithm})"
                                                     }
                                                     DetailRow(
-                                                        title = "Algorithm",
+                                                        title = stringResource(Res.string.signature_algorithm),
                                                         detail = detail
-                                                    ) //TODO: i18n
+                                                    )
                                                 }
 
                                                 currentSig.publicKeyFormat?.let {
                                                     DetailRow(
-                                                        title = "Public key",
+                                                        title = stringResource(Res.string.signature_public_key),
                                                         detail = "$it ${currentSig.publicKeyAlgorithm} (${currentSig.publicKeyAlgorithmOid})"
-                                                    ) //TODO: i18n
+                                                    )
                                                 }
 
                                                 currentSig.issuer?.let {
                                                     DetailRow(
-                                                        "Issuer",
+                                                        stringResource(Res.string.signature_issuer),
                                                         it
-                                                    ) //TODO: i18n
+                                                    )
                                                 }
 
                                                 currentSig.subject?.let {
                                                     DetailRow(
-                                                        "Subject",
+                                                        stringResource(Res.string.signature_subject),
                                                         it
-                                                    ) //TODO: i18n
+                                                    )
                                                 }
 
                                                 DetailRow(
-                                                    "Valid Duration",
+                                                    stringResource(Res.string.signature_valid_duration),
                                                     "${currentSig.validFrom} -> ${currentSig.validUntil}",
                                                     detailColor = if (currentSig.certificateValidNow == true) AppTheme.colorScheme.success else AppTheme.colorScheme.error
-                                                ) //TODO: i18n
+                                                )
 
                                                 if (currentSig.certificateSha256.isNotEmpty()) {
                                                     DetailRow(
@@ -775,7 +773,7 @@ private fun InfoGrid(info: ApkInfo) {
 
                                                 if (currentSig.errors.isNotEmpty()) {
                                                     DetailRow(
-                                                        "ERROR",
+                                                        stringResource(Res.string.signature_error),
                                                         currentSig.errors.joinToString(", "),
                                                         titleColor = AppTheme.colorScheme.error
                                                     )
@@ -783,7 +781,7 @@ private fun InfoGrid(info: ApkInfo) {
 
                                                 if (currentSig.warnings.isNotEmpty()) {
                                                     DetailRow(
-                                                        "WARNING",
+                                                        stringResource(Res.string.signature_warning),
                                                         currentSig.warnings.joinToString(", "),
                                                         titleColor = AppTheme.colorScheme.error
                                                     )

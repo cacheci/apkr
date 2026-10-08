@@ -57,4 +57,14 @@
     <string name="tab_receiver">Receivers</string>
     <string name="confirm">OK</string>
     <string name="choose_apk">Choose APK</string>
+    <string name="signature_verification">Verification</string>
+    <string name="signature_verification_success">SUCCESS</string>
+    <string name="signature_verification_failed">FAILED</string>
+    <string name="signature_algorithm">Algorithm</string>
+    <string name="signature_public_key">Public key</string>
+    <string name="signature_issuer">Issuer</string>
+    <string name="signature_subject">Subject</string>
+    <string name="signature_valid_duration">Valid duration</string>
+    <string name="signature_error">ERROR</string>
+    <string name="signature_warning">WARNING</string>
 </resources>
