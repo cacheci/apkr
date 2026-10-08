@@ -1,6 +1,10 @@
 package com.cacheci.apkk.parser
 
 import com.cacheci.apkk.model.ApkInfo
+import com.cacheci.apkk.model.BuildFeatures
+import com.cacheci.apkk.model.ComponentInfo
+import com.cacheci.apkk.model.IntentFilterInfo
+import com.cacheci.apkk.model.ManifestFeature
 import com.cacheci.apkk.model.TechFeature
 import java.io.File
 import java.util.Locale
@@ -11,6 +15,7 @@ object ApkParser {
     fun parse(path: String, preferredLocale: String = Locale.getDefault().toLanguageTag()): ApkInfo {
         val file = File(path)
         require(file.isFile) { "APK 文件不存在：$path" }
+        require(file.extension.equals("apk", ignoreCase = true)) { "只支持解析 .apk 文件：$path" }
 
         val standalone = file.inputStream().use { input ->
             val header = ByteArray(8)
@@ -67,6 +72,41 @@ object ApkParser {
             ?: iconLoader?.resolvePath(roundIcon)
             ?: ""
         val nativeLibs = names.filter { it.startsWith("lib/") && it.endsWith(".so") }
+        val nativeLibraryDetails = if (zip != null) {
+            ApkBinaryInspector.nativeLibraries(file, zip, entries)
+        } else {
+            emptyList()
+        }
+        val signatureDetails = if (zip != null) {
+            ApkBinaryInspector.signatures(file, zip, entries)
+        } else {
+            emptyList()
+        }
+        val componentDetails = application?.let(::componentDetails).orEmpty()
+        val manifestMetadata = application?.childrenNamed("meta-data")
+            ?.mapNotNull { node ->
+                node.androidAttr("name").takeIf(String::isNotEmpty)?.let { name ->
+                    com.cacheci.apkk.model.ManifestMetadata(name, node.androidAttr("value").ifEmpty { node.androidAttr("resource") })
+                }
+            }.orEmpty()
+        val buildFeatures = if (zip != null) detectBuildFeatures(zip, entries) else BuildFeatures()
+        val usesFeatures = manifest.childrenNamed("uses-feature").mapNotNull { node ->
+            node.androidAttr("name").takeIf(String::isNotEmpty)?.let { name ->
+                ManifestFeature(name, node.androidAttr("required"), node.androidAttr("version"))
+            }
+        }
+        val usesLibraries = manifest.childrenNamed("uses-library")
+            .map { it.androidAttr("name") }.filter(String::isNotEmpty)
+        val queryEntries = manifest.childrenNamed("queries").flatMap { query ->
+            query.children.flatMap { node ->
+                when (node.name) {
+                    "package" -> listOf("package:${node.androidAttr("name")}")
+                    "provider" -> listOf("provider:${node.androidAttr("authorities")}")
+                    "intent" -> node.childrenNamed("action").map { "action:${it.androidAttr("name")}" }
+                    else -> emptyList()
+                }
+            }
+        }.filter { !it.endsWith(":") }
 
         fun sdk(name: String): String = usesSdk?.androidAttr(name).orEmpty()
             .ifEmpty { manifest.androidAttr(name) }
@@ -91,7 +131,7 @@ object ApkParser {
             appIconMimeType = icon?.mimeType,
             supportedLanguages = resources?.supportedLanguages.orEmpty(),
             debuggable = application?.androidAttr("debuggable").orEmpty(),
-            permissions = manifest.childrenNamed("uses-permission")
+            permissions = manifest.children.filter { it.name == "uses-permission" || it.name.startsWith("uses-permission-") }
                 .map { it.androidAttr("name") }.filter(String::isNotEmpty).distinct().sorted(),
             activities = application.components("activity"),
             services = application.components("service"),
@@ -99,9 +139,19 @@ object ApkParser {
             providers = application.components("provider"),
             nativeLibs = nativeLibs,
             abis = nativeLibs.mapNotNull { it.split('/').getOrNull(1) }.distinct().sorted(),
-            signatures = names.filter { signaturePattern.matches(it) },
+            signatures = (names.filter { signaturePattern.matches(it) } + signatureDetails.map { it.scheme }).distinct(),
             fileCount = names.size,
-            techFeatures = if (zip != null) detectTechFeatures(zip, entries, names, nativeLibs) else emptyList(),
+            techFeatures = if (zip != null) detectTechFeatures(zip, entries, names, nativeLibs, manifest) else emptyList(),
+            manifestMetadata = manifestMetadata,
+            componentDetails = componentDetails,
+            nativeLibraryDetails = nativeLibraryDetails,
+            signatureDetails = signatureDetails,
+            buildFeatures = buildFeatures,
+            usesFeatures = usesFeatures,
+            usesLibraries = usesLibraries,
+            queryEntries = queryEntries,
+            sharedUserId = manifest.androidAttr("sharedUserId"),
+            overlayTargetPackage = manifest.androidAttr("targetPackage"),
         )
     }
 
@@ -110,6 +160,7 @@ object ApkParser {
         entries: List<ZipEntry>,
         names: List<String>,
         nativeLibs: List<String>,
+        manifest: XmlNode,
     ): List<TechFeature> {
         val dex = entries.filter { it.name.endsWith(".dex") }
             .mapNotNull { runCatching { zip.read(it) }.getOrNull() }
@@ -131,8 +182,72 @@ object ApkParser {
             if (has("kotlinx/coroutines/", "kotlinx.coroutines.")) add(TechFeature("Coroutines", "coroutines"))
             if (has("androidx/room/", "androidx.room.")) add(TechFeature("Room", "room"))
             if (nativeLibs.isNotEmpty()) add(TechFeature("Native", "native"))
+            if (nativeLibs.any { it.substringAfterLast('/') == "libflutter.so" } || has("Lio/flutter/FlutterInjector;")) {
+                add(TechFeature("Flutter", "flutter"))
+            }
+            if (nativeLibs.any { it.substringAfterLast('/') in setOf("libunity.so", "libil2cpp.so") } || has("Lcom/unity3d/")) {
+                add(TechFeature("Unity", "unity"))
+            }
+            if (has("okhttp3/", "com/squareup/okhttp")) add(TechFeature("OkHttp", "okhttp"))
+            if (has("retrofit2/", "Lretrofit2/")) add(TechFeature("Retrofit", "retrofit"))
+            if (has("com/google/firebase/", "com.google.firebase.")) add(TechFeature("Firebase", "firebase"))
+            if (manifest.children.any { it.name == "uses-feature" && it.androidAttr("name") == "android.hardware.vulkan.version" }) {
+                add(TechFeature("Vulkan", "vulkan"))
+            }
         }
     }
+
+    private fun detectBuildFeatures(zip: ZipFile, entries: List<ZipEntry>): BuildFeatures {
+        val names = entries.map(ZipEntry::getName)
+        val tooling = entries.firstOrNull { it.name == "kotlin-tooling-metadata.json" }
+            ?.let { runCatching { zip.read(it).toString(Charsets.UTF_8) }.getOrNull() }
+        val composeVersion = entries.firstNotNullOfOrNull { entry ->
+            if (!entry.name.startsWith("META-INF/androidx.compose.") || !entry.name.endsWith(".version")) return@firstNotNullOfOrNull null
+            runCatching { zip.read(entry).toString(Charsets.UTF_8).trim().takeIf(String::isNotEmpty) }.getOrNull()
+        }
+        val agpMetadata = entries.firstOrNull {
+            it.name == "META-INF/com/android/build/gradle/app-metadata.properties" ||
+                it.name == "BUNDLE-METADATA/com.android.tools.build.gradle/app-metadata.properties"
+        }?.let { runCatching { zip.read(it).toString(Charsets.UTF_8) }.getOrNull() }
+        return BuildFeatures(
+            kotlinDetected = names.any { it.endsWith(".kotlin_module") } || tooling?.contains("KotlinAndroidPluginWrapper") == true,
+            kotlinVersion = tooling?.property("buildPluginVersion"),
+            composeDetected = composeVersion != null,
+            composeVersion = composeVersion,
+            gradleVersion = tooling?.property("buildSystemVersion"),
+            agpVersion = agpMetadata?.property("androidGradlePluginVersion"),
+        )
+    }
+
+    private fun String.property(name: String): String? = lineSequence()
+        .firstOrNull { it.substringBefore('=').trim() == name }
+        ?.substringAfter('=', "")
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+
+    private fun componentDetails(application: XmlNode): List<ComponentInfo> =
+        listOf("activity", "activity-alias", "service", "receiver", "provider").flatMap { type ->
+            application.childrenNamed(type).map { node ->
+                ComponentInfo(
+                    type = type,
+                    name = node.androidAttr("name"),
+                    exported = node.androidAttr("exported"),
+                    permission = node.androidAttr("permission"),
+                    process = node.androidAttr("process"),
+                    intentFilters = node.childrenNamed("intent-filter").map { filter ->
+                        IntentFilterInfo(
+                            actions = filter.childrenNamed("action").map { it.androidAttr("name") }.filter(String::isNotEmpty),
+                            categories = filter.childrenNamed("category").map { it.androidAttr("name") }.filter(String::isNotEmpty),
+                            data = filter.childrenNamed("data").map { data ->
+                                listOf("scheme", "host", "port", "path", "pathPrefix", "pathPattern", "mimeType")
+                                    .mapNotNull { key -> data.androidAttr(key).takeIf(String::isNotEmpty)?.let { "$key=$it" } }
+                                    .joinToString(",")
+                            }.filter(String::isNotEmpty),
+                        )
+                    },
+                )
+            }
+        }
 
     private fun ByteArray.contains(needle: ByteArray): Boolean {
         if (needle.isEmpty() || needle.size > size) return false

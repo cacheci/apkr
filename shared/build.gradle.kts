@@ -13,5 +13,10 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
+        val desktopMain by getting {
+            dependencies {
+                implementation(libs.apksig)
+            }
+        }
     }
 }

@@ -50,7 +50,6 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -68,7 +67,6 @@ import com.cacheci.apkk.platform.AdbDevice
 import com.cacheci.apkk.platform.AdbInstaller
 import com.cacheci.apkk.platform.DesktopPlatform
 import com.cacheci.apkk.platform.SettingsRepository
-import com.cacheci.apkk.ui.component.ButtonColors
 import com.cacheci.apkk.ui.component.ButtonDefaults
 import com.cacheci.apkk.ui.component.Card
 import com.cacheci.apkk.ui.component.EnumSelector
@@ -94,6 +92,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import java.awt.datatransfer.DataFlavor
 import java.io.File
+import kotlin.text.ifEmpty
 import kotlin.to
 
 @Composable
@@ -606,11 +605,6 @@ private fun InfoGrid(info: ApkInfo) {
                                     vertical = 8.dp,
                                 )
                             ) {
-                                val defaultText = stringResource(Res.string.default_value)
-                                val undeclaredText = stringResource(Res.string.undeclared)
-                                val debugDefaultText = stringResource(Res.string.debug_default)
-                                val noAbiText = stringResource(Res.string.no_abi)
-                                val noSignatureText = stringResource(Res.string.no_signature)
                                 val rows = listOf(
                                     stringResource(Res.string.file_name) to info.fileName,
                                     stringResource(Res.string.file_size) to info.size,
@@ -623,40 +617,182 @@ private fun InfoGrid(info: ApkInfo) {
                                     stringResource(Res.string.compile_sdk) to sdkLabel(info.compileSdk),
                                     stringResource(Res.string.languages) to info.supportedLanguages.joinToString(
                                         ", "
-                                    ).ifEmpty { defaultText },
-                                    stringResource(Res.string.debuggable) to info.debuggable.ifEmpty { debugDefaultText },
+                                    ).ifEmpty { stringResource(Res.string.default_value) },
+                                    stringResource(Res.string.debuggable) to info.debuggable.ifEmpty { stringResource(Res.string.debug_default) },
                                     stringResource(Res.string.file_count) to info.fileCount.toString(),
                                     stringResource(Res.string.abi) to info.abis.joinToString(", ")
-                                        .ifEmpty { noAbiText },
+                                        .ifEmpty { stringResource(Res.string.no_abi) },
                                     stringResource(Res.string.signatures) to info.signatures.joinToString(
                                         ", "
-                                    ).ifEmpty { noSignatureText },
+                                    ).ifEmpty { stringResource(Res.string.no_signature) },
                                 )
                                 rows.forEach { (name, value) ->
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-                                        Text(
-                                            name,
-                                            Modifier.width(116.dp),
-                                            color = AppTheme.colorScheme.element,
-                                            style = AppTheme.textStyles.summary
-                                        )
-                                        SelectableText(
-                                            value.ifEmpty { undeclaredText },
-                                            Modifier.weight(1f),
-                                            style = AppTheme.textStyles.summary,
-                                            fontFamily = AppTheme.monospaceFontFamily,
-                                        )
-                                    }
+                                    DetailRow(
+                                        title = name,
+                                        detail = value,
+                                    )
                                 }
                             }
 
                         AppInfoCard.SIGNATURE ->
-                            Column(
-                                Modifier.fillMaxWidth().padding(
-                                    horizontal = DefaultThemeValues.cardInsidePadding,
-                                    vertical = 8.dp,
+                            if (info.signatureDetails.isEmpty()) {
+                                Text(
+                                    stringResource(Res.string.no_signature),
+                                    modifier = Modifier.padding(
+                                        horizontal = DefaultThemeValues.cardInsidePadding,
+                                    ),
                                 )
-                            ) {}
+                            } else {
+                                var currentSig by remember(info) { mutableStateOf(0) }
+
+                                Column(modifier = Modifier.heightIn(min = 240.dp).padding(4.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth()
+                                            .height(IntrinsicSize.Min)
+                                            .background(color = AppTheme.colorScheme.secondContainer)
+                                            .padding(horizontal = 12.dp)
+                                            .offset(y = 2.dp)
+                                            .zIndex(1f),
+                                    ) {
+                                        info.signatureDetails.forEachIndexed { index, signature ->
+                                            val selected = currentSig == index
+                                            val interactionSource = remember {
+                                                MutableInteractionSource()
+                                            }
+                                            val isPressed by interactionSource.collectIsPressedAsState()
+
+                                            VisualBox (
+                                                visualFeedback = isPressed,
+                                                effectiveWidth = PaddingValues(
+                                                    start = 2.dp, end = 2.dp, top = 2.dp,
+                                                    bottom = if (selected) 0.dp else 2.dp
+                                                )
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .height(IntrinsicSize.Min)
+                                                        .clickable(
+                                                            onClick = { currentSig = index },
+                                                            interactionSource = interactionSource,
+                                                        ),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Text(
+                                                        text = signature.scheme,
+                                                        color = AppTheme.colorScheme.element,
+                                                        modifier = Modifier
+                                                            .padding(8.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    VisualBox (visualFeedback = true) {
+                                        AnimatedContent(
+                                            modifier = Modifier
+                                                .heightIn(min = 30.dp)
+                                                .fillMaxWidth(),
+                                            targetState = currentSig,
+                                            transitionSpec = {
+                                                if (targetState > initialState) {
+                                                    (slideInHorizontally { it }) togetherWith
+                                                            (slideOutHorizontally { -it })
+                                                } else {
+                                                    (slideInHorizontally { -it }) togetherWith
+                                                            (slideOutHorizontally { it })
+                                                }
+                                            },
+                                        ) {
+                                            val currentSig = info.signatureDetails[currentSig]
+                                            Column (
+                                                modifier = Modifier.padding(
+                                                    horizontal = DefaultThemeValues.cardInsidePadding,
+                                                )
+                                            ) {
+                                                DetailRow(
+                                                    "verification",
+                                                    if (currentSig.verificationSuccessful == true) "SUCCESS" else "FAILED",
+                                                    detailColor = if (currentSig.verificationSuccessful == true) AppTheme.colorScheme.success else AppTheme.colorScheme.error
+                                                ) //TODO: i18n
+
+                                                currentSig.signatureAlgorithmId?.let {
+                                                    DetailRow(
+                                                        "Algorithm",
+                                                        "0x" + it.toString(16) + if (currentSig.algorithm != null) " (${currentSig.algorithm})" else ""
+                                                    ) //TODO: i18n
+                                                }
+
+                                                currentSig.signatureAlgorithmId?.let {
+                                                    var detail = "0x${it.toString(16)}"
+                                                    currentSig.algorithm?.let {
+                                                        detail += " (${currentSig.algorithm})"
+                                                    }
+                                                    DetailRow(
+                                                        title = "Algorithm",
+                                                        detail = detail
+                                                    ) //TODO: i18n
+                                                }
+
+                                                currentSig.publicKeyFormat?.let {
+                                                    DetailRow(
+                                                        title = "Public key",
+                                                        detail = "$it ${currentSig.publicKeyAlgorithm} (${currentSig.publicKeyAlgorithmOid})"
+                                                    ) //TODO: i18n
+                                                }
+
+                                                currentSig.issuer?.let {
+                                                    DetailRow(
+                                                        "Issuer",
+                                                        it
+                                                    ) //TODO: i18n
+                                                }
+
+                                                currentSig.subject?.let {
+                                                    DetailRow(
+                                                        "Subject",
+                                                        it
+                                                    ) //TODO: i18n
+                                                }
+
+                                                DetailRow(
+                                                    "Valid Duration",
+                                                    "${currentSig.validFrom} -> ${currentSig.validUntil}",
+                                                    detailColor = if (currentSig.certificateValidNow == true) AppTheme.colorScheme.success else AppTheme.colorScheme.error
+                                                ) //TODO: i18n
+
+                                                if (currentSig.certificateSha256.isNotEmpty()) {
+                                                    DetailRow(
+                                                        "SHA-256",
+                                                        currentSig.certificateSha256.joinToString(", ")
+                                                    )
+                                                }
+                                                if (currentSig.certificateSha1.isNotEmpty()) {
+                                                    DetailRow(
+                                                        "SHA-1",
+                                                        currentSig.certificateSha1.joinToString(", ")
+                                                    )
+                                                }
+
+                                                if (currentSig.errors.isNotEmpty()) {
+                                                    DetailRow(
+                                                        "ERROR",
+                                                        currentSig.errors.joinToString(", "),
+                                                        titleColor = AppTheme.colorScheme.error
+                                                    )
+                                                }
+
+                                                if (currentSig.warnings.isNotEmpty()) {
+                                                    DetailRow(
+                                                        "WARNING",
+                                                        currentSig.warnings.joinToString(", "),
+                                                        titleColor = AppTheme.colorScheme.error
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
 
                         AppInfoCard.PERMISSION ->
@@ -696,7 +832,7 @@ private fun InfoGrid(info: ApkInfo) {
 
                             if (libArch.any { it.first.isNotEmpty() }) {
                                     Column(modifier = Modifier.heightIn(min = 240.dp).padding(4.dp)) {
-                                        var currentArch by remember { mutableStateOf(0) }
+                                        var currentArch by remember(info) { mutableStateOf(0) }
 
                                         Row(
                                             modifier = Modifier.fillMaxWidth()
@@ -909,6 +1045,29 @@ private fun SettingsPanel(settings: AppSettings, update: (AppSettings) -> Unit) 
     }
 }
 
+@Composable
+private fun DetailRow(
+    title: String,
+    detail: String,
+    titleColor: Color? = null,
+    detailColor: Color? = null,
+) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Text(
+            title,
+            Modifier.width(116.dp),
+            color = titleColor ?: AppTheme.colorScheme.element,
+            style = AppTheme.textStyles.summary
+        )
+        SelectableText(
+            detail.ifEmpty { stringResource(Res.string.undeclared) },
+            Modifier.weight(1f),
+            color = detailColor ?: Color.Unspecified,
+            style = AppTheme.textStyles.summary,
+            fontFamily = AppTheme.monospaceFontFamily,
+        )
+    }
+}
 
 private fun sdkLabel(value: String): String {
     val name = androidVersions[value] ?: return value

@@ -2,9 +2,11 @@
 kotlin = "2.4.20"
 compose = "1.12.1"
 coroutines = "1.10.2"
+apksig = "9.4.1"
 
 [libraries]
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

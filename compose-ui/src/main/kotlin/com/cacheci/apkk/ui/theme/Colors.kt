@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 
 class Colors(
     primary: Color,
+    success: Color,
     error: Color,
     element: Color,
     primaryElement: Color,
@@ -25,6 +26,8 @@ class Colors(
     thirdBorder: Color,
 ) {
     var primary by mutableStateOf(primary, structuralEqualityPolicy())
+        internal set
+    var success by mutableStateOf(success, structuralEqualityPolicy())
         internal set
     var error by mutableStateOf(error, structuralEqualityPolicy())
         internal set
@@ -56,6 +59,7 @@ class Colors(
 
     fun copy(
         primary: Color = this.primary,
+        success: Color = this.success,
         error: Color = this.error,
         element: Color = this.element,
         primaryElement: Color = this.primaryElement,
@@ -70,7 +74,7 @@ class Colors(
         thirdContainer: Color = this.thirdContainer,
         thirdBorder: Color = this.thirdBorder,
     ): Colors = Colors(
-        primary, error,
+        primary, success, error,
         element, primaryElement, disabledElement,
         summary, disabledSummary,
         background,
@@ -83,7 +87,8 @@ class Colors(
 
 fun lightColorScheme(
     primary: Color = Color(0xFFA19B79),
-    error: Color = Color(0xFFB30000),
+    success: Color = Color(0xFF31801B),
+    error: Color = Color(0xFFA31414),
     element: Color = Color(0xFF000000),
     primaryElement:  Color = Color(0xFFFFFFFF),
     disabledElement: Color = Color(0xFF959595),
@@ -97,7 +102,7 @@ fun lightColorScheme(
     thirdContainer: Color = Color(0xFFE7E7E7),
     thirdBorder: Color = Color(0xFF717171),
 ): Colors = Colors(
-    primary, error,
+    primary, success, error,
     element, primaryElement, disabledElement,
     summary, disabledSummary,
     background,
@@ -108,7 +113,8 @@ fun lightColorScheme(
 
 fun darkColorScheme(
     primary: Color = Color(0xFF7AA9FF),
-    error: Color = Color(0xFFFF5E5E),
+    success: Color = Color(0xFF93D49A),
+    error: Color = Color(0xFFD27676),
     element: Color = Color(0xFFFFFFFF),
     primaryElement:  Color = Color(0xFF000000),
     disabledElement: Color = Color(0xFFBBBBBB),
@@ -122,7 +128,7 @@ fun darkColorScheme(
     thirdContainer: Color = Color(0xFF635D40),
     thirdBorder: Color = Color(0xFF8CBFC6),
 ): Colors = Colors(
-    primary, error,
+    primary, success, error,
     element, primaryElement, disabledElement,
     summary, disabledSummary,
     background,
@@ -134,6 +140,7 @@ fun darkColorScheme(
 @Stable
 internal fun Colors.updateColorsFrom(other:Colors) {
     primary = other.primary
+    success = other.success
     error = other.error
     element = other.element
     primaryElement = other.primaryElement
