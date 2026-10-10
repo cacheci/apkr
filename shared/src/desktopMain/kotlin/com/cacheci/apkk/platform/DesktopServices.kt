@@ -3,7 +3,9 @@ package com.cacheci.apkk.platform
 import com.cacheci.apkk.model.AppLanguage
 import com.cacheci.apkk.model.AppSettings
 import com.cacheci.apkk.model.AppColorTheme
+import java.awt.Desktop
 import java.io.File
+import java.net.URI
 import java.util.prefs.Preferences
 
 enum class DesktopPlatform { WINDOWS, MACOS }
@@ -13,6 +15,10 @@ data class AdbDevice(
     val state: String,
     val model: String?,
 )
+
+fun openLink(url: String) {
+    Desktop.getDesktop().browse(URI(url))
+}
 
 object SettingsRepository {
     private val preferences = Preferences.userRoot().node("com/cacheci/apkk")

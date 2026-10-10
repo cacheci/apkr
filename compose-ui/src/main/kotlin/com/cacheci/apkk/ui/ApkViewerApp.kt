@@ -53,7 +53,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberDialogState
 import androidx.compose.ui.zIndex
@@ -67,6 +66,7 @@ import com.cacheci.apkk.platform.AdbDevice
 import com.cacheci.apkk.platform.AdbInstaller
 import com.cacheci.apkk.platform.DesktopPlatform
 import com.cacheci.apkk.platform.SettingsRepository
+import com.cacheci.apkk.platform.openLink
 import com.cacheci.apkk.ui.component.ButtonDefaults
 import com.cacheci.apkk.ui.component.Card
 import com.cacheci.apkk.ui.component.EnumSelector
@@ -155,6 +155,7 @@ private fun App(
     var selectedDeviceIndex by remember { mutableStateOf(0) }
     var deviceSelectionVisible by remember { mutableStateOf(false) }
     var settingsVisible by remember { mutableStateOf(false) }
+    var aboutVisible by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     fun load(path: String) {
@@ -246,6 +247,13 @@ private fun App(
                 Text(stringResource(Res.string.title), style = AppTheme.textStyles.h1, fontWeight = FontWeight.Medium)
             }
             TextButton(
+                text = if (aboutVisible) stringResource(Res.string.back) else stringResource(Res.string.about),
+                onClick = {
+                    aboutVisible = !aboutVisible
+                    settingsVisible = false
+                }
+            )
+            TextButton(
                 text = when {
                     installing -> stringResource(Res.string.installing)
                     else -> stringResource(Res.string.install)
@@ -255,7 +263,10 @@ private fun App(
             )
             TextButton(
                 text = if (settingsVisible) stringResource(Res.string.back) else stringResource(Res.string.settings),
-                onClick = { settingsVisible = !settingsVisible }
+                onClick = {
+                    settingsVisible = !settingsVisible
+                    aboutVisible = false
+                }
             )
         }
 
@@ -269,6 +280,7 @@ private fun App(
 
                 when {
                     settingsVisible -> SettingsPanel(settings, updateSettings)
+                    aboutVisible -> AboutPanel()
                     info != null -> InfoGrid(info!!)
                 }
             }
@@ -276,15 +288,11 @@ private fun App(
     }
 
     dialog?.let { (title, message) ->
-        DialogWindow(
+        com.cacheci.apkk.ui.component.DialogWindow(
             onCloseRequest = { dialog = null },
             title = title,
-            state = rememberDialogState(
-                width = 200.dp,
-                height = 160.dp,
-                position = WindowPosition(Alignment.Center),
-            ),
-            resizable = false,
+            minSize = DpSize(120.dp,80.dp),
+            resizable = true,
         ) {
             Column (
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -997,6 +1005,22 @@ private fun InfoGrid(info: ApkInfo) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable fun AboutPanel() {
+    VisualBox (modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(DefaultThemeValues.cardInsidePadding), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(Res.string.title), style = AppTheme.textStyles.h2, fontWeight = FontWeight.Medium)
+                Text(stringResource(Res.string.about_summary), color = AppTheme.colorScheme.summary, style = AppTheme.textStyles.ref , fontWeight = FontWeight.Light)
+                Text(stringResource(Res.string.about_thanks_summary), color = AppTheme.colorScheme.summary, style = AppTheme.textStyles.ref , fontWeight = FontWeight.Light)
+            }
+            TextButton(
+                text = "GitHub",
+                onClick = { openLink("https://github.com/cacheci/apkr") }
+            )
         }
     }
 }

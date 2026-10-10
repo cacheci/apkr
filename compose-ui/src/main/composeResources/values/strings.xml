@@ -1,6 +1,9 @@
 <resources>
     <string name="title">APK 基础信息查看器</string>
+    <string name="about_summary">Written by 吃白饭的大肥鱼</string>
+    <string name="about_thanks_summary">部分代码来自 LibChecker (Apache2.0)</string>
     <string name="settings">设置</string>
+    <string name="about">关于</string>
     <string name="back">返回</string>
     <string name="install">安装</string>
     <string name="installing">安装中</string>

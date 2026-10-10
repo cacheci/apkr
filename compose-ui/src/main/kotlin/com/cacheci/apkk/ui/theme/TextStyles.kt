@@ -14,12 +14,15 @@ import androidx.compose.ui.unit.sp
 class TextStyles(
     main: TextStyle,
     h1: TextStyle,
+    h2: TextStyle,
     summary: TextStyle,
     ref: TextStyle,
 ) {
     var main by mutableStateOf(main, structuralEqualityPolicy())
         internal set
     var h1 by mutableStateOf(h1, structuralEqualityPolicy())
+        internal set
+    var h2 by mutableStateOf(h2, structuralEqualityPolicy())
         internal set
     var summary by mutableStateOf(summary, structuralEqualityPolicy())
         internal set
@@ -29,11 +32,12 @@ class TextStyles(
     fun copy(
         main: TextStyle = this.main,
         h1: TextStyle = this.h1,
+        h2: TextStyle = this.h2,
         summary: TextStyle = this.summary,
         ref: TextStyle = this.ref,
     ): TextStyles = TextStyles(
         main,
-        h1,
+        h1, h2,
         summary,
         ref,
     )
@@ -42,11 +46,12 @@ class TextStyles(
 fun defaultTextStyles(
     main: TextStyle = Main,
     h1: TextStyle = H1,
+    h2: TextStyle = H2,
     summary: TextStyle = Summary,
     ref: TextStyle = Ref,
 ): TextStyles = TextStyles(
     main,
-    h1,
+    h1, h2,
     summary,
     ref,
 )
@@ -62,6 +67,12 @@ private val H1: TextStyle
     get() =
         TextStyle(
             fontSize = 32.sp,
+        )
+
+private val H2: TextStyle
+    get() =
+        TextStyle(
+            fontSize = 24.sp,
         )
 
 private val Summary: TextStyle

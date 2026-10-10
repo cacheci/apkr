@@ -35,6 +35,7 @@ fun AppTheme(
     val miSansTextStyles = textStyles.copy(
         main = textStyles.main.copy(fontFamily = appFontFamily),
         h1 = textStyles.h1.copy(fontFamily = appFontFamily),
+        h2 = textStyles.h2.copy(fontFamily = appFontFamily),
         summary = textStyles.summary.copy(fontFamily = appFontFamily),
         ref = textStyles.ref.copy(fontFamily = appFontFamily),
     )
